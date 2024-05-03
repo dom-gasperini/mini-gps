@@ -37,7 +37,19 @@ typedef struct Data
     double latitude;
     double longitude;
     double altitude;
+
+    double speed;
+
+    int year;
+    int month;
+    int day;
+
+    int hour;
+    int minute;
+    int second;
+
     float avgSignalStrength;
+
     int numSats;
     SatelliteData satellites[];
 } Data;

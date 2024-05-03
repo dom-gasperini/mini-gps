@@ -90,6 +90,17 @@ Data data = {
     .latitude = 0.0f,
     .longitude = 0.0f,
     .altitude = 0.0f,
+
+    .speed = 0.0f,
+
+    .year = 0,
+    .month = 0,
+    .day = 0,
+
+    .hour = 0,
+    .minute = 0,
+    .second = 0,
+
     .numSats = 0,
     .satellites = {MAX_SATELLITES},
 };
@@ -136,6 +147,8 @@ void DebugTask(void *pvParameters);
 
 // helpers
 void TrackSatellites();
+void GPSDateTime();
+void GPSSpeed();
 String TaskStateToString(eTaskState state);
 
 /*
@@ -334,9 +347,32 @@ void GPSTask(void *pvParameters)
         TrackSatellites();
 
         // current gps position data
-        data.latitude = gps.location.lat();
-        data.longitude = gps.location.lng();
-        data.altitude = gps.altitude.meters();
+        if (gps.location.isUpdated())
+        {
+          data.latitude = gps.location.lat();
+          data.longitude = gps.location.lng();
+          data.altitude = gps.altitude.meters();
+        }
+
+        // gps date and time data
+        if (gps.date.isUpdated())
+        {
+          data.year = gps.date.year();
+          data.month = gps.date.month();
+          data.day = gps.date.day();
+        }
+        if (gps.time.isUpdated())
+        {
+          data.hour = gps.time.hour();
+          data.minute = gps.time.minute();
+          data.second = gps.time.second();
+        }
+
+        // gps speed data
+        if (gps.speed.isUpdated())
+        {
+          data.speed = gps.speed.mph();
+        }
       }
 
       // release mutex!
@@ -373,13 +409,26 @@ void DisplayTask(void *pvParameters)
       tft.setTextSize(2);
       tft.setCursor(0, 30);
       tft.printf("latitude: %f", data.latitude);
+
       tft.setCursor(0, 50);
       tft.printf("longitude: %f", data.longitude);
+
       tft.setCursor(0, 70);
       tft.printf("altitude: %f", data.altitude);
-      tft.setCursor(0, 150);
-      tft.printf("avg conn strength: %.2f", data.avgSignalStrength);
+
+      tft.setCursor(0, 90);
+      tft.printf("current speed (mph): %.1f", data.speed);
+
+      tft.setCursor(0, 120);
+      tft.printf("date: %d - %d - %d", data.year, data.month, data.day);
+
+      tft.setCursor(0, 140);
+      tft.printf("time: %d : %d : %d", data.hour, data.minute, data.second);
+
       tft.setCursor(0, 200);
+      tft.printf("avg conn strength: %.2f", data.avgSignalStrength);
+
+      tft.setCursor(0, 220);
       tft.printf("# satellites: %d", data.numSats);
 
       // release mutex!
