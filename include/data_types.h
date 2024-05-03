@@ -1,7 +1,7 @@
 /**
  * @file dataTypes.h
  * @author dom gasperini
- * @brief all of the unique data types used to manage the state of the mini-gps device
+ * @brief mini-gps
  * @version 0.1
  * @date 2024-05-02
  */
@@ -21,16 +21,7 @@
 */
 
 // /**
-//  * the standard pulsar message frame
-//  */
-// typedef struct MessageDataFrame
-// {
-//     String id;
-//     String message;
-// } MessageDataFrame;
-
-// /**
-//  * for managin the mode the display is in
+//  * for managing the mode the display is in
 //  */
 // typedef enum DisplayMode
 // {
@@ -52,14 +43,13 @@ typedef struct Data
 } Data;
 
 /**
- * @brief Debugger Structure
+ * @brief debugger structure
  *
  */
 typedef struct Debugger
 {
     // debug toggle
     bool debugEnabled;
-    // bool network_debugEnabled;
     bool IO_debugEnabled;
     bool display_debugEnabled;
     bool scheduler_debugEnable;
@@ -67,21 +57,15 @@ typedef struct Debugger
     // OS data
     // DisplayMode displayMode;
 
-    // // networking
-    // MessageDataFrame outgoingMessage;
-
     // scheduler data
     unsigned long ioTaskCount;
-    // unsigned long networkTaskCount;
     unsigned long displayTaskCount;
 
     unsigned long ioTaskPreviousCount;
-    // unsigned long networkTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
 } Debugger;
 
 // debug functions
 void PrintDebug();
 void PrintIODebug();
-void PrintNetworkDebug();
 void PrintSchedulerDebug();

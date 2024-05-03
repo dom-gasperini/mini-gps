@@ -40,17 +40,8 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
-#define TFT_SCK 18
-#define TFT_MOSI 23
-#define TFT_MISO 19
-#define TFT_CS 22
-#define TFT_DC 21
-#define TFT_RESET 17
-
 // GPS
 #define GPS_BAUD 9600
-#define GPS_TX 16
-#define GPS_RX 17
 
 // tasks & timers
 #define TASK_STACK_SIZE 4096      // in bytes
@@ -391,7 +382,6 @@ String TaskStateToString(eTaskState state)
  */
 void loop()
 {
-  // everything is managed by RTOS, so nothing really happens here!
   vTaskDelay(1); // prevent watchdog from getting upset & for debugging, limit print refresh rate
 }
 
