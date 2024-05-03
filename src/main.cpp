@@ -54,7 +54,7 @@
 #define DISPLAY_REFRESH_RATE 50 // in RTOS ticks (1 tick = ~1 millisecond)
 #define DEBUG_REFRESH_RATE 1000 // in RTOS ticks (1 tick = ~1 millisecond)
 
-#define ENABLE_DEBUG true // master debug message control
+#define ENABLE_DEBUG false // master debug message control
 
 /*
 ===============================================================================================
@@ -183,6 +183,7 @@ void setup()
   // analogReadResolution(12);
 
   // inputs
+  // esp_sleep_enable_ext0_wakeup((gpio_num_t)SLEEP_BUTTON_PIN, LOW);
 
   // outputs
 
@@ -208,7 +209,7 @@ void setup()
   Serial.printf("gps init [ success ]\n");
   // -------------------------------------------------------------------------- //
   // -------------------------- initialize display --------------------------- //
-  tft.begin();
+  tft.init();
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
 
@@ -311,6 +312,13 @@ void IOTask(void *pvParameters)
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
+      // activate light sleep
+      if (digitalRead(SLEEP_BUTTON_PIN) == LOW)
+      {
+        // engage deep sleep
+        // esp_deep_sleep_start();
+      }
+
       // release mutex!
       xSemaphoreGive(xMutex);
     }

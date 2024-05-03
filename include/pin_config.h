@@ -32,6 +32,9 @@ esp_pm_config_esp32_t power_configuration{
 ===========================================================
 */
 
+// inputs
+#define SLEEP_BUTTON_PIN 39
+
 // display
 #define TFT_SCK 18
 #define TFT_MOSI 23
