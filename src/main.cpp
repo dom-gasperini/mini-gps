@@ -49,6 +49,7 @@
 // tasks & timers
 #define TASK_STACK_SIZE 4096      // in bytes
 #define IO_REFRESH_RATE 1000      // in RTOS ticks (1 tick = ~1 millisecond)
+#define GPS_REFRESH_RATE 5000     // in RTOS ticks (1 tick = ~1 millisecond)
 #define DISPLAY_REFRESH_RATE 1000 // in RTOS ticks (1 tick = ~1 millisecond)
 #define DEBUG_REFRESH_RATE 1000   // in RTOS ticks (1 tick = ~1 millisecond)
 
@@ -66,7 +67,6 @@
 Debugger debugger = {
     // debug toggle
     .debugEnabled = ENABLE_DEBUG,
-    // .network_debugEnabled = false,
     .IO_debugEnabled = true,
     .display_debugEnabled = false,
     .scheduler_debugEnable = false,
@@ -105,8 +105,8 @@ TFT_eSPI tft = TFT_eSPI();
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // rtos task handles
-TaskHandle_t xHandleGPS = NULL;
 TaskHandle_t xHandleIO = NULL;
+TaskHandle_t xHandleGPS = NULL;
 TaskHandle_t xHandleDisplay = NULL;
 TaskHandle_t xHandleDebug = NULL;
 
@@ -117,8 +117,8 @@ TaskHandle_t xHandleDebug = NULL;
 */
 
 // tasks
-void GPSTask(void *pvParameters);
 void IOTask(void *pvParameters);
+void GPSTask(void *pvParameters);
 void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
@@ -126,9 +126,9 @@ void DebugTask(void *pvParameters);
 String TaskStateToString(eTaskState state);
 
 /*
-================================================================================
+===============================================================================================
                                   setup
-================================================================================
+===============================================================================================
 */
 
 void setup()
@@ -144,13 +144,13 @@ void setup()
   struct Setup
   {
     bool ioActive = false;
+    bool gpsActive = false;
     bool displayActive = false;
-    bool loraActive = false;
   } setup;
 
   // --------------------------- initialize serial  --------------------------- //
   Serial.begin(9600);
-  Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
+  Serial.printf("\n\n|--- starting setup ---|\n\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gpio ------------------------------ //
@@ -163,19 +163,21 @@ void setup()
   // interrupts
 
   setup.ioActive = true;
-  Serial.printf("GPIO INIT [ SUCCESS ]\n");
+  Serial.printf("gpio init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
 
   serialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
 
+  Serial.printf("gps init [ success ]\n");
   // -------------------------------------------------------------------------- //
   // -------------------------- initialize display --------------------------- //
   tft.begin();
   tft.fillScreen(TFT_BLACK);
 
   setup.displayActive = true;
+  Serial.printf("display init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // --------------------- scheduler & task status ---------------------------- //
@@ -183,17 +185,21 @@ void setup()
   xMutex = xSemaphoreCreateMutex();
 
   // task setup status
-  Serial.printf("\nTask Setup Status:\n");
-  Serial.printf("I/O TASK SETUP: %s\n", setup.ioActive ? "COMPLETE" : "FAILED");
-  Serial.printf("DISPLAY TASK SETUP: %s\n", setup.displayActive ? "COMPLETE" : "FAILED");
+  Serial.printf("\ntask setup status:\n");
+  Serial.printf("I/O task setup: %s\n", setup.ioActive ? "complete" : "failed");
+  Serial.printf("display task setup: %s\n", setup.displayActive ? "complete" : "failed");
 
   // start tasks
   if (xMutex != NULL)
   {
-
     if (setup.ioActive)
     {
-      xTaskCreate(GPSTask, "IO-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIO);
+      xTaskCreate(IOTask, "IO-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIO);
+    }
+
+    if (setup.gpsActive)
+    {
+      xTaskCreate(GPSTask, "GPS-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleGPS);
     }
 
     if (setup.displayActive)
@@ -214,35 +220,35 @@ void setup()
     };
   }
   // task status
-  Serial.printf("\nTask Status:\n");
+  Serial.printf("\ntask status:\n");
   if (xHandleIO != NULL)
-    Serial.printf("I/O TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleIO)));
+    Serial.printf("i/o task status: %s\n", TaskStateToString(eTaskGetState(xHandleIO)));
   else
-    Serial.printf("I/O TASK STATUS: DISABLED!\n");
+    Serial.printf("i/o task status: DISABLED!\n");
 
   if (xHandleDisplay != NULL)
-    Serial.printf("DISPLAY TASK STATUS: %s\n", TaskStateToString(eTaskGetState(xHandleDisplay)));
+    Serial.printf("display task status: %s\n", TaskStateToString(eTaskGetState(xHandleDisplay)));
   else
-    Serial.printf("DISPLAY TASK STATUS: DISABLED!\n");
+    Serial.printf("display task status: DISABLED!\n");
 
   // scheduler status
   if (xTaskGetSchedulerState() == 2)
   {
-    Serial.printf("\nScheduler Status: RUNNING\n");
+    Serial.printf("\nscheduler status: running\n");
 
     // clock frequency
     rtc_cpu_freq_config_t clock_config;
     rtc_clk_cpu_freq_get_config(&clock_config);
-    Serial.printf("CPU Frequency: %dMHz\n", clock_config.freq_mhz);
+    Serial.printf("soc frequency: %dMHz\n", clock_config.freq_mhz);
   }
   else
   {
-    Serial.printf("\nScheduler STATUS: FAILED\nHALTING OPERATIONS");
+    Serial.printf("\nscheduler status: FAILED\nHALTING OPERATIONS");
     while (1)
     {
     };
   }
-  Serial.printf("\n\n|--- END SETUP ---|\n\n");
+  Serial.printf("\n\n|--- end setup ---|\n\n");
   // --------------------------------------------------------------------------- //
 }
 
@@ -253,18 +259,16 @@ void setup()
 */
 
 /**
- * @brief manages the display
+ * @brief i/o task
  * @param pvParameters parameters passed to task
  */
-void DisplayTask(void *pvParameters)
+void IOTask(void *pvParameters)
 {
   for (;;)
   {
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-      // display things
-
       // release mutex!
       xSemaphoreGive(xMutex);
     }
@@ -272,16 +276,16 @@ void DisplayTask(void *pvParameters)
     // debugging
     if (debugger.debugEnabled)
     {
-      debugger.displayTaskCount++;
+      debugger.gpsTaskCount++;
     }
 
     // limit task refresh rate
-    vTaskDelay(DISPLAY_REFRESH_RATE);
+    vTaskDelay(IO_REFRESH_RATE);
   }
 }
 
 /**
- * @brief I/O
+ * @brief gps task
  * @param pvParameters parameters passed to task
  */
 void GPSTask(void *pvParameters)
@@ -309,6 +313,34 @@ void GPSTask(void *pvParameters)
 
     // limit task refresh rate
     vTaskDelay(IO_REFRESH_RATE);
+  }
+}
+
+/**
+ * @brief manages the display
+ * @param pvParameters parameters passed to task
+ */
+void DisplayTask(void *pvParameters)
+{
+  for (;;)
+  {
+    // check for mutex availability
+    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
+    {
+      // display things
+
+      // release mutex!
+      xSemaphoreGive(xMutex);
+    }
+
+    // debugging
+    if (debugger.debugEnabled)
+    {
+      debugger.displayTaskCount++;
+    }
+
+    // limit task refresh rate
+    vTaskDelay(DISPLAY_REFRESH_RATE);
   }
 }
 
@@ -354,15 +386,15 @@ String TaskStateToString(eTaskState state)
   switch (state)
   {
   case eReady:
-    stateStr = "RUNNING";
+    stateStr = "running";
     break;
 
   case eBlocked:
-    stateStr = "BLOCKED";
+    stateStr = "blocked";
     break;
 
   case eSuspended:
-    stateStr = "SUSPENDED";
+    stateStr = "suspended";
     break;
 
   case eDeleted:
@@ -402,7 +434,7 @@ void loop()
  */
 void PrintIODebug()
 {
-  Serial.printf("#sats: %d\n", gps.satellites.value());
+  Serial.printf("# sats: %d\n", gps.satellites.value());
   Serial.printf("latitude: %f\n", data.latitude);
   Serial.printf("longitude: %f\n", data.longitude);
   Serial.printf("altitude: %f\n", data.altitude);
@@ -427,11 +459,17 @@ void PrintSchedulerDebug()
     taskStates.push_back(eTaskGetState(xHandleIO));
   }
 
+  if (xHandleGPS != NULL)
+  {
+    taskStates.push_back(eTaskGetState(xHandleGPS));
+  }
+
   if (xHandleDisplay != NULL)
   {
     taskStates.push_back(eTaskGetState(xHandleDisplay));
   }
 
+  taskRefreshRate.push_back(debugger.ioTaskCount - debugger.ioTaskPreviousCount);
   taskRefreshRate.push_back(debugger.gpsTaskCount - debugger.gpsTaskPreviousCount);
   taskRefreshRate.push_back(debugger.displayTaskCount - debugger.displayTaskPreviousCount);
 
@@ -442,11 +480,13 @@ void PrintSchedulerDebug()
   }
 
   // print
-  Serial.printf("uptime: %d sec | io: (%u)<%d Hz> | display: (%u)<%d Hz>\r",
-                uptime, debugger.gpsTaskCount, taskRefreshRate.at(0),
-                debugger.displayTaskCount, taskRefreshRate.at(1));
+  Serial.printf("uptime: %d sec | io: (%u)<%d Hz> | gps:(%u)<%d Hz> | display: (%u)<%d Hz>\r",
+                uptime, debugger.ioTaskCount, taskRefreshRate.at(0),
+                debugger.gpsTaskCount, taskRefreshRate.at(1),
+                debugger.displayTaskCount, taskRefreshRate.at(2));
 
   // update counters
+  debugger.ioTaskPreviousCount = debugger.ioTaskCount;
   debugger.gpsTaskPreviousCount = debugger.gpsTaskCount;
   debugger.displayTaskPreviousCount = debugger.displayTaskCount;
 
