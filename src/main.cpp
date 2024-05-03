@@ -45,6 +45,7 @@
 
 // gps
 #define GPS_BAUD 9600
+#define MAX_SATELLITES 40
 
 // tasks & timers
 #define TASK_STACK_SIZE 4096    // in bytes
@@ -89,6 +90,8 @@ Data data = {
     .latitude = 0.0f,
     .longitude = 0.0f,
     .altitude = 0.0f,
+    .numSats = 0,
+    .satellites = {MAX_SATELLITES},
 };
 
 // mutex
@@ -96,6 +99,15 @@ SemaphoreHandle_t xMutex = NULL;
 
 // gps
 TinyGPSPlus gps;
+TinyGPSCustom totalGPGSVMessages(gps, "GPGSV", 1); // $GPGSV sentence, first element
+TinyGPSCustom messageNumber(gps, "GPGSV", 2);      // $GPGSV sentence, second element
+TinyGPSCustom satellitesInView(gps, "GPGSV", 3);   // $GPGSV sentence, third element
+
+TinyGPSCustom satNumber[4];
+TinyGPSCustom elevation[4];
+TinyGPSCustom azimuth[4];
+TinyGPSCustom snr[4];
+
 HardwareSerial serialGPS(1);
 
 // display
@@ -123,6 +135,7 @@ void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
 // helpers
+void TrackSatellites();
 String TaskStateToString(eTaskState state);
 
 /*
@@ -169,12 +182,24 @@ void setup()
   // -------------------------- initialize gps -------------------------------- //
   serialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
 
+  // init sat trackers
+  for (int i = 0; i < 4; ++i)
+  {
+    satNumber[i].begin(gps, "GPGSV", 4 + 4 * i); // offsets 4, 8, 12, 16
+    elevation[i].begin(gps, "GPGSV", 5 + 4 * i); // offsets 5, 9, 13, 17
+    azimuth[i].begin(gps, "GPGSV", 6 + 4 * i);   // offsets 6, 10, 14, 18
+    snr[i].begin(gps, "GPGSV", 7 + 4 * i);       // offsets 7, 11, 15, 19
+  }
+
   setup.gpsActive = true;
   Serial.printf("gps init [ success ]\n");
   // -------------------------------------------------------------------------- //
   // -------------------------- initialize display --------------------------- //
   tft.begin();
+  tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
+  tft.setCursor(10, 10);
+  tft.printf("test!");
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
@@ -301,11 +326,18 @@ void GPSTask(void *pvParameters)
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-      gps.encode(serialGPS.read());
+      if (serialGPS.available())
+      {
+        gps.encode(serialGPS.read());
 
-      data.latitude = gps.location.lat();
-      data.longitude = gps.location.lng();
-      data.altitude = gps.altitude.meters();
+        // sat tracking
+        TrackSatellites();
+
+        // current gps position data
+        data.latitude = gps.location.lat();
+        data.longitude = gps.location.lng();
+        data.altitude = gps.altitude.meters();
+      }
 
       // release mutex!
       xSemaphoreGive(xMutex);
@@ -333,7 +365,22 @@ void DisplayTask(void *pvParameters)
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-      // display things
+      // display gps information
+      tft.setTextSize(3);
+      tft.setCursor(0, 0);
+      tft.printf("gps data:");
+
+      tft.setTextSize(2);
+      tft.setCursor(0, 30);
+      tft.printf("latitude: %f", data.latitude);
+      tft.setCursor(0, 50);
+      tft.printf("longitude: %f", data.longitude);
+      tft.setCursor(0, 70);
+      tft.printf("altitude: %f", data.altitude);
+      tft.setCursor(0, 150);
+      tft.printf("avg conn strength: %.2f", data.avgSignalStrength);
+      tft.setCursor(0, 200);
+      tft.printf("# satellites: %d", data.numSats);
 
       // release mutex!
       xSemaphoreGive(xMutex);
@@ -379,6 +426,80 @@ void DebugTask(void *pvParameters)
                                     helper functions
 ================================================================================================
 */
+
+void TrackSatellites()
+{
+  // gather data about connected satellites
+  if (totalGPGSVMessages.isUpdated())
+  {
+    for (int i = 0; i < 4; ++i)
+    {
+      int no = atoi(satNumber[i].value());
+      if (no >= 1 && no <= MAX_SATELLITES)
+      {
+        data.satellites[no - 1].elevation = atoi(elevation[i].value());
+        data.satellites[no - 1].azimuth = atoi(azimuth[i].value());
+        data.satellites[no - 1].snr = atoi(snr[i].value());
+        data.satellites[no - 1].active = true;
+      }
+    }
+
+    int totalMessages = atoi(totalGPGSVMessages.value());
+    int currentMessage = atoi(messageNumber.value());
+    if (totalMessages == currentMessage)
+    {
+      // num sats
+      data.numSats = 0;
+      for (int i = 0; i < MAX_SATELLITES; ++i)
+      {
+        if (data.satellites[i].active)
+        {
+          data.numSats++;
+        }
+      }
+
+      // elevation
+      for (int i = 0; i < MAX_SATELLITES; ++i)
+      {
+        if (data.satellites[i].active)
+        {
+          // Serial.print(data.satellites[i].elevation);
+          // Serial.print(F(" "));
+        }
+      }
+
+      // azimuth
+      for (int i = 0; i < MAX_SATELLITES; ++i)
+      {
+        if (data.satellites[i].active)
+        {
+          // Serial.print(data.satellites[i].azimuth);
+          // Serial.print(F(" "));
+        }
+      }
+
+      // signal to noise ratio
+      float runSum = 0;
+      int count = 0;
+      for (int i = 0; i < MAX_SATELLITES; ++i)
+      {
+        if (data.satellites[i].active)
+        {
+          // Serial.print(data.satellites[i].snr);
+          // Serial.print(F(" "));
+          count++;
+          runSum += data.satellites[i].snr;
+        }
+      }
+      data.avgSignalStrength = runSum / count;
+
+      // set all to inactive
+      for (int i = 0; i < MAX_SATELLITES; ++i)
+        data.satellites[i].active = false;
+    }
+  }
+  return;
+}
 
 /**
  *
@@ -440,7 +561,7 @@ void loop()
  */
 void PrintIODebug()
 {
-  Serial.printf("# sats: %d\n", gps.satellites.value());
+  Serial.printf("# data.satellites: %d\n", gps.satellites.value());
   Serial.printf("latitude: %f\n", data.latitude);
   Serial.printf("longitude: %f\n", data.longitude);
   Serial.printf("altitude: %f\n", data.altitude);

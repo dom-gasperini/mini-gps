@@ -19,6 +19,17 @@
 */
 
 /**
+ * @brief all data about satellites
+ */
+typedef struct SatelliteData
+{
+    bool active;
+    int elevation;
+    int azimuth;
+    int snr;
+} SatelliteData;
+
+/**
  * @brief mini-gps data frame
  */
 typedef struct Data
@@ -26,6 +37,9 @@ typedef struct Data
     double latitude;
     double longitude;
     double altitude;
+    float avgSignalStrength;
+    int numSats;
+    SatelliteData satellites[];
 } Data;
 
 /**
