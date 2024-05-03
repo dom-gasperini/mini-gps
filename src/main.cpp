@@ -175,7 +175,6 @@ void setup()
   // -------------------------- initialize display --------------------------- //
   tft.begin();
   tft.fillScreen(TFT_BLACK);
-  tft.fillScreen(TFT_BLUE);
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
