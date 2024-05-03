@@ -343,9 +343,10 @@ void GPSTask(void *pvParameters)
 
         // sat tracking
         TrackSatellites();
+        data.numSats = gps.satellites.value();
 
         // current gps position data
-        if (gps.location.isUpdated())
+        if (gps.location.isUpdated() && gps.location.isValid())
         {
           data.latitude = gps.location.lat();
           data.longitude = gps.location.lng();
@@ -353,13 +354,13 @@ void GPSTask(void *pvParameters)
         }
 
         // gps date and time data
-        if (gps.date.isUpdated())
+        if (gps.date.isUpdated() && gps.date.isValid())
         {
           data.year = gps.date.year();
           data.month = gps.date.month();
           data.day = gps.date.day();
         }
-        if (gps.time.isUpdated())
+        if (gps.time.isUpdated() && gps.time.isValid())
         {
           data.hour = gps.time.hour();
           data.minute = gps.time.minute();
@@ -367,7 +368,7 @@ void GPSTask(void *pvParameters)
         }
 
         // gps speed data
-        if (gps.speed.isUpdated())
+        if (gps.speed.isUpdated() && gps.speed.isValid())
         {
           data.speed = gps.speed.mph();
         }
@@ -500,13 +501,12 @@ void TrackSatellites()
     int currentMessage = atoi(messageNumber.value());
     if (totalMessages == currentMessage)
     {
-      // num sats
-      data.numSats = 0;
+      // active sats
       for (int i = 0; i < MAX_SATELLITES; ++i)
       {
         if (data.satellites[i].active)
         {
-          data.numSats++;
+          // idk
         }
       }
 
