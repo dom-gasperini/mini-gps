@@ -403,10 +403,12 @@ void DisplayTask(void *pvParameters)
     {
       // display gps information
       tft.setTextSize(3);
+      tft.setTextColor(TFT_RED);
       tft.setCursor(0, 0);
       tft.printf("gps data:");
 
       tft.setTextSize(2);
+      tft.setTextColor(TFT_CYAN);
       tft.setCursor(0, 30);
       tft.printf("latitude: %f", data.latitude);
 
@@ -416,15 +418,18 @@ void DisplayTask(void *pvParameters)
       tft.setCursor(0, 70);
       tft.printf("altitude: %f", data.altitude);
 
+      tft.setTextColor(TFT_PURPLE);
       tft.setCursor(0, 90);
       tft.printf("current speed (mph): %.1f", data.speed);
 
+      tft.setTextColor(TFT_GREEN);
       tft.setCursor(0, 120);
       tft.printf("date: %d - %d - %d", data.year, data.month, data.day);
 
       tft.setCursor(0, 140);
       tft.printf("time: %d : %d : %d", data.hour, data.minute, data.second);
 
+      tft.setTextColor(TFT_WHITE);
       tft.setCursor(0, 200);
       tft.printf("avg conn strength: %.2f", data.avgSignalStrength);
 
