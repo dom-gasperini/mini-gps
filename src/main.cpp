@@ -211,8 +211,6 @@ void setup()
   tft.begin();
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
-  tft.setCursor(10, 10);
-  tft.printf("test!");
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
