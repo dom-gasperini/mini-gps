@@ -12,27 +12,30 @@
 
 /*
 ===============================================================================================
-                                    Includes
+                                    includes
 ===============================================================================================
 */
 
+// core
 #include <Arduino.h>
 #include "rtc.h"
 #include "rtc_clk_common.h"
+#include <vector>
 #include <Wire.h>
 #include <SPI.h>
 
+// functionality
 #include "HardwareSerial.h"
 #include "TinyGPSPlus.h"
-
 #include <TFT_eSPI.h>
 
+// custom headers
 #include <data_types.h>
 #include <pin_config.h>
 
 /*
 ===============================================================================================
-                                    Definitions
+                                    definitions
 ===============================================================================================
 */
 
@@ -40,7 +43,7 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
-// GPS
+// gps
 #define GPS_BAUD 9600
 
 // tasks & timers
@@ -53,7 +56,7 @@
 
 /*
 ===============================================================================================
-                                  Global Variables
+                                  global variables
 ===============================================================================================
 */
 
@@ -74,10 +77,12 @@ Debugger debugger = {
 
     // scheduler data
     .ioTaskCount = 0,
-    // .networkTaskCount = 0,
+    .gpsTaskCount = 0,
+    .displayTaskCount = 0,
 
     .ioTaskPreviousCount = 0,
-    // .networkTaskPreviousCount = 0,
+    .gpsTaskPreviousCount = 0,
+    .displayTaskPreviousCount = 0,
 };
 
 Data data = {
@@ -86,32 +91,33 @@ Data data = {
     .altitude = 0.0f,
 };
 
-// Mutex
+// mutex
 SemaphoreHandle_t xMutex = NULL;
 
-// GPS
+// gps
 TinyGPSPlus gps;
 HardwareSerial serialGPS(1);
 
-// Display
+// display
 TFT_eSPI tft = TFT_eSPI();
 
-// Hardware Timer
+// hardware timer
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
-// RTOS Task Handles
+// rtos task handles
+TaskHandle_t xHandleGPS = NULL;
 TaskHandle_t xHandleIO = NULL;
 TaskHandle_t xHandleDisplay = NULL;
-
 TaskHandle_t xHandleDebug = NULL;
 
 /*
 ===============================================================================================
-                                  Function Declarations
+                                  function declarations
 ===============================================================================================
 */
 
 // tasks
+void GPSTask(void *pvParameters);
 void IOTask(void *pvParameters);
 void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
@@ -120,9 +126,9 @@ void DebugTask(void *pvParameters);
 String TaskStateToString(eTaskState state);
 
 /*
-===============================================================================================
-                                            Setup
-===============================================================================================
+================================================================================
+                                  setup
+================================================================================
 */
 
 void setup()
@@ -147,7 +153,7 @@ void setup()
   Serial.printf("\n\n|--- STARTING SETUP ---|\n\n");
   // -------------------------------------------------------------------------- //
 
-  // -------------------------- initialize GPIO ------------------------------ //
+  // -------------------------- initialize gpio ------------------------------ //
   // analogReadResolution(12);
 
   // inputs
@@ -160,19 +166,19 @@ void setup()
   Serial.printf("GPIO INIT [ SUCCESS ]\n");
   // -------------------------------------------------------------------------- //
 
-  // -------------------------- initialize GPS -------------------------------- //
+  // -------------------------- initialize gps -------------------------------- //
 
   serialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
 
   // -------------------------------------------------------------------------- //
-  // -------------------------- initialize Display --------------------------- //
+  // -------------------------- initialize display --------------------------- //
   tft.begin();
   tft.fillScreen(TFT_BLACK);
 
   setup.displayActive = true;
   // -------------------------------------------------------------------------- //
 
-  // --------------------- Scheduler & Task Status ---------------------------- //
+  // --------------------- scheduler & task status ---------------------------- //
   // init mutex
   xMutex = xSemaphoreCreateMutex();
 
@@ -187,7 +193,7 @@ void setup()
 
     if (setup.ioActive)
     {
-      xTaskCreate(IOTask, "IO-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIO);
+      xTaskCreate(GPSTask, "IO-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIO);
     }
 
     if (setup.displayActive)
@@ -242,7 +248,7 @@ void setup()
 
 /*
 ===============================================================================================
-                                FreeRTOS Task Functions
+                                freertos task functions
 ===============================================================================================
 */
 
@@ -278,7 +284,7 @@ void DisplayTask(void *pvParameters)
  * @brief I/O
  * @param pvParameters parameters passed to task
  */
-void IOTask(void *pvParameters)
+void GPSTask(void *pvParameters)
 {
   for (;;)
   {
@@ -298,7 +304,7 @@ void IOTask(void *pvParameters)
     // debugging
     if (debugger.debugEnabled)
     {
-      debugger.ioTaskCount++;
+      debugger.gpsTaskCount++;
     }
 
     // limit task refresh rate
@@ -332,7 +338,7 @@ void DebugTask(void *pvParameters)
 
 /*
 ===============================================================================================
-                                    Helper Functions
+                                    helper functions
 ================================================================================================
 */
 
@@ -373,7 +379,7 @@ String TaskStateToString(eTaskState state)
 
 /*
 ===============================================================================================
-                                    Main Loop
+                                    main loop
 ===============================================================================================
 */
 
@@ -387,7 +393,7 @@ void loop()
 
 /*
 ===============================================================================================
-                                    DEBUG FUNCTIONS
+                                    debug functions
 ================================================================================================
 */
 
@@ -426,7 +432,7 @@ void PrintSchedulerDebug()
     taskStates.push_back(eTaskGetState(xHandleDisplay));
   }
 
-  taskRefreshRate.push_back(debugger.ioTaskCount - debugger.ioTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.gpsTaskCount - debugger.gpsTaskPreviousCount);
   taskRefreshRate.push_back(debugger.displayTaskCount - debugger.displayTaskPreviousCount);
 
   // make it usable
@@ -437,10 +443,11 @@ void PrintSchedulerDebug()
 
   // print
   Serial.printf("uptime: %d sec | io: (%u)<%d Hz> | display: (%u)<%d Hz>\r",
-                uptime, debugger.ioTaskCount, taskRefreshRate.at(0), debugger.displayTaskCount, taskRefreshRate.at(1));
+                uptime, debugger.gpsTaskCount, taskRefreshRate.at(0),
+                debugger.displayTaskCount, taskRefreshRate.at(1));
 
   // update counters
-  debugger.ioTaskPreviousCount = debugger.ioTaskCount;
+  debugger.gpsTaskPreviousCount = debugger.gpsTaskCount;
   debugger.displayTaskPreviousCount = debugger.displayTaskCount;
 
   return;

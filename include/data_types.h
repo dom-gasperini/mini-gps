@@ -1,5 +1,5 @@
 /**
- * @file dataTypes.h
+ * @file data_types.h
  * @author dom gasperini
  * @brief mini-gps
  * @version 0.1
@@ -7,30 +7,16 @@
  */
 
 /*
-===============================================================================================
-                                    Includes
-===============================================================================================
+========================================================
+                    includes
+========================================================
 */
-
-#include <vector>
 
 /*
-===============================================================================================
-                                    Data Types
-===============================================================================================
+========================================================
+                    data types
+========================================================
 */
-
-// /**
-//  * for managing the mode the display is in
-//  */
-// typedef enum DisplayMode
-// {
-//     HOME = 0,
-//     RECIEVE = 1,
-//     TRANSMIT = 2,
-//     SETTINGS = 3,
-//     MISC = 4,
-// } DisplayMode;
 
 /**
  * @brief mini-gps data frame
@@ -51,21 +37,22 @@ typedef struct Debugger
     // debug toggle
     bool debugEnabled;
     bool IO_debugEnabled;
+    bool gps_debugEnabled;
     bool display_debugEnabled;
     bool scheduler_debugEnable;
 
-    // OS data
-    // DisplayMode displayMode;
-
     // scheduler data
     unsigned long ioTaskCount;
+    unsigned long gpsTaskCount;
     unsigned long displayTaskCount;
 
     unsigned long ioTaskPreviousCount;
+    unsigned long gpsTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
 } Debugger;
 
 // debug functions
 void PrintDebug();
+void PrintGPSDebug();
 void PrintIODebug();
 void PrintSchedulerDebug();
