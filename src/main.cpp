@@ -47,11 +47,11 @@
 #define GPS_BAUD 9600
 
 // tasks & timers
-#define TASK_STACK_SIZE 4096      // in bytes
-#define IO_REFRESH_RATE 1000      // in RTOS ticks (1 tick = ~1 millisecond)
-#define GPS_REFRESH_RATE 5000     // in RTOS ticks (1 tick = ~1 millisecond)
-#define DISPLAY_REFRESH_RATE 1000 // in RTOS ticks (1 tick = ~1 millisecond)
-#define DEBUG_REFRESH_RATE 1000   // in RTOS ticks (1 tick = ~1 millisecond)
+#define TASK_STACK_SIZE 4096    // in bytes
+#define IO_REFRESH_RATE 50      // in RTOS ticks (1 tick = ~1 millisecond)
+#define GPS_REFRESH_RATE 5000   // in RTOS ticks (1 tick = ~1 millisecond)
+#define DISPLAY_REFRESH_RATE 50 // in RTOS ticks (1 tick = ~1 millisecond)
+#define DEBUG_REFRESH_RATE 1000 // in RTOS ticks (1 tick = ~1 millisecond)
 
 #define ENABLE_DEBUG true // master debug message control
 
@@ -67,9 +67,9 @@
 Debugger debugger = {
     // debug toggle
     .debugEnabled = ENABLE_DEBUG,
-    .IO_debugEnabled = true,
+    .IO_debugEnabled = false,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = false,
+    .scheduler_debugEnable = true,
 
     // .displayMode = HOME,
 
@@ -167,14 +167,15 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-
   serialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
 
+  setup.gpsActive = true;
   Serial.printf("gps init [ success ]\n");
   // -------------------------------------------------------------------------- //
   // -------------------------- initialize display --------------------------- //
   tft.begin();
   tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(TFT_BLUE);
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
@@ -186,7 +187,8 @@ void setup()
 
   // task setup status
   Serial.printf("\ntask setup status:\n");
-  Serial.printf("I/O task setup: %s\n", setup.ioActive ? "complete" : "failed");
+  Serial.printf("i/o task setup: %s\n", setup.ioActive ? "complete" : "failed");
+  Serial.printf("gps task setup: %s\n", setup.gpsActive ? "complete" : "failed");
   Serial.printf("display task setup: %s\n", setup.displayActive ? "complete" : "failed");
 
   // start tasks
@@ -225,6 +227,11 @@ void setup()
     Serial.printf("i/o task status: %s\n", TaskStateToString(eTaskGetState(xHandleIO)));
   else
     Serial.printf("i/o task status: DISABLED!\n");
+
+  if (xHandleGPS != NULL)
+    Serial.printf("gps task status: %s\n", TaskStateToString(eTaskGetState(xHandleGPS)));
+  else
+    Serial.printf("gps task status: DISABLED!\n");
 
   if (xHandleDisplay != NULL)
     Serial.printf("display task status: %s\n", TaskStateToString(eTaskGetState(xHandleDisplay)));
@@ -312,7 +319,7 @@ void GPSTask(void *pvParameters)
     }
 
     // limit task refresh rate
-    vTaskDelay(IO_REFRESH_RATE);
+    vTaskDelay(GPS_REFRESH_RATE);
   }
 }
 
