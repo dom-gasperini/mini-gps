@@ -34,6 +34,9 @@ typedef struct SatelliteData
  */
 typedef struct Data
 {
+    bool connected;
+    bool wasConnected;
+
     double latitude;
     double longitude;
     double altitude;
