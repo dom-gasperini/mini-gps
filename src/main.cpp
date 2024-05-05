@@ -25,7 +25,7 @@
 #include <SPI.h>
 
 // functionality
-#include "HardwareSerial.h"
+#include "SoftwareSerial.h"
 #include "TinyGPSPlus.h"
 #include <TFT_eSPI.h>
 
@@ -54,7 +54,7 @@
 #define DISPLAY_REFRESH_RATE 50 // in RTOS ticks (1 tick = ~1 millisecond)
 #define DEBUG_REFRESH_RATE 1000 // in RTOS ticks (1 tick = ~1 millisecond)
 
-#define ENABLE_DEBUG false // master debug message control
+#define ENABLE_DEBUG true // master debug message control
 
 /*
 ===============================================================================================
@@ -119,7 +119,7 @@ TinyGPSCustom elevation[4];
 TinyGPSCustom azimuth[4];
 TinyGPSCustom snr[4];
 
-HardwareSerial serialGPS(1);
+SoftwareSerial gpsSerial(GPS_RX, GPS_TX);
 
 // display
 TFT_eSPI tft = TFT_eSPI();
@@ -194,7 +194,7 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  serialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RX, GPS_TX);
+  gpsSerial.begin(GPS_BAUD);
 
   // init sat trackers
   for (int i = 0; i < 4; ++i)
@@ -345,9 +345,9 @@ void GPSTask(void *pvParameters)
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-      if (serialGPS.available())
+      if (gpsSerial.available())
       {
-        gps.encode(serialGPS.read());
+        gps.encode(gpsSerial.read());
 
         // sat tracking
         TrackSatellites();

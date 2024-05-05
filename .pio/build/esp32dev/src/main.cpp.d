@@ -137,7 +137,9 @@
  /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
  /home/dom/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
  /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
- /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/HardwareSerial.h \
+ .pio/libdeps/esp32dev/EspSoftwareSerial/src/SoftwareSerial.h \
+ .pio/libdeps/esp32dev/ghostl/src/circular_queue.h \
+ .pio/libdeps/esp32dev/ghostl/src/Delegate.h \
  .pio/libdeps/esp32dev/TinyGPSPlus/src/TinyGPSPlus.h \
  .pio/libdeps/esp32dev/TinyGPSPlus/src/TinyGPS++.h \
  .pio/libdeps/esp32dev/TFT_eSPI/TFT_eSPI.h \
