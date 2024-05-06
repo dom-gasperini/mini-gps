@@ -48,7 +48,7 @@
 #define MAX_SATELLITES 40
 
 // debugging
-#define ENABLE_DEBUGGING true
+#define ENABLE_DEBUGGING false
 
 /*
 ===============================================================================================
@@ -284,6 +284,10 @@ void UpdateDisplay()
     tft.setCursor(0, 0);
     tft.printf("gps data:");
 
+    // outline boxes
+    tft.drawRect(0, 25, 320, 150, TFT_DARKCYAN);
+    tft.drawRect(0, 185, 320, 45, TFT_MAGENTA);
+
     // set info font size and color
     tft.setTextSize(2);
     tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
@@ -291,85 +295,86 @@ void UpdateDisplay()
     // location data
     if (gps.location.isValid())
     {
-      tft.setCursor(0, 30);
+      tft.setCursor(5, 30);
       tft.printf("latitude: %f", data.latitude);
 
-      tft.setCursor(0, 50);
+      tft.setCursor(5, 50);
       tft.printf("longitude: %f", data.longitude);
 
-      tft.setCursor(0, 70);
+      tft.setCursor(5, 70);
       tft.printf("altitude: %f", data.altitude);
     }
     else
     {
-      tft.setCursor(0, 30);
-      tft.printf("latitude: ---.---");
+      tft.setCursor(5, 30);
+      tft.printf("latitude:  ---.---");
 
-      tft.setCursor(0, 50);
-      tft.printf("longitude: ---.--");
+      tft.setCursor(5, 50);
+      tft.printf("longitude: ---.---");
 
-      tft.setCursor(0, 70);
-      tft.printf("altitude: ---.---");
+      tft.setCursor(5, 70);
+      tft.printf("altitude:  ---.---");
     }
 
     // speed data
     tft.setTextColor(TFT_PURPLE, TFT_BLACK, true);
-    tft.setCursor(0, 90);
+    tft.setCursor(5, 100);
     if (gps.speed.isValid())
     {
-      tft.printf("current speed (mph): %.1f", data.speed);
+      tft.printf("speed (mph): %.1f", data.speed);
     }
     else
     {
-      tft.printf("current speed (mph): ---", data.speed);
+      tft.printf("speed (mph): ---", data.speed);
     }
 
-    // date and time
+    // date
     tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-
+    tft.setCursor(5, 130);
     if (gps.date.isValid())
     {
-      tft.setCursor(0, 120);
       tft.printf("date: %d/%d/%d", data.year, data.month, data.day);
     }
     else
     {
-      tft.setCursor(0, 120);
       tft.printf("date: __/__/__");
     }
+
+    // time
+    tft.setCursor(5, 150);
     if (gps.time.isValid())
     {
-      tft.setCursor(0, 140);
-      tft.printf("time: %d:%d:%d:%d", data.hour, data.minute, data.second, data.centisecond);
+      tft.printf("time: %d:%d:%d:%d (UTC)", data.hour, data.minute, data.second, data.centisecond);
     }
     else
     {
-      tft.setCursor(0, 140);
-      tft.printf("time: ---:---:---:---", data.hour, data.minute, data.second);
+      tft.printf("time: ---:---:---:--- (UTC)", data.hour, data.minute, data.second);
     }
 
     // connection data
-    tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-
-    tft.setCursor(0, 200);
     if (data.connected)
     {
-      tft.printf("# satellites: %d", data.numSats);
+      tft.setCursor(5, 190);
+      tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+      tft.printf("satellites connected: %d", data.numSats);
     }
     else
     {
-      tft.printf("no signal!");
+      tft.setCursor(80, 190);
+      tft.setTextColor(TFT_RED, TFT_BLACK, true);
+      tft.printf("< no signal >");
     }
 
+    // connection stats
+    tft.setCursor(5, 210);
+    tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
     if (data.numSats != 0)
     {
-      tft.setCursor(0, 220);
-      tft.printf("avg conn strength: %.2f", data.avgSignalStrength);
+      tft.printf("signal strength: %.2f", data.avgSignalStrength);
     }
     else
     {
-      tft.setCursor(0, 220);
-      tft.printf("avg conn strength: ---", data.avgSignalStrength);
+      tft.printf("signal strength: ---", data.avgSignalStrength);
     }
   }
 
