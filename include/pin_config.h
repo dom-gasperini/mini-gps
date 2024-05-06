@@ -2,8 +2,8 @@
  * @file pin_config.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 0.1
- * @date 2024-05-02
+ * @version 1.0
+ * @date 2024-05-06
  */
 
 /*
@@ -33,16 +33,16 @@ esp_pm_config_esp32_t power_configuration{
 */
 
 // inputs
-#define SLEEP_BUTTON_PIN 39
+#define SLEEP_BUTTON_PIN 18
 
 // display
-#define TFT_SCK 18
-#define TFT_MOSI 23
-#define TFT_MISO 19
-#define TFT_CS 22
-#define TFT_DC 21
-#define TFT_RESET 17
+// #define TFT_SCK 27
+// #define TFT_MOSI 32
+// #define TFT_MISO 14
+// #define TFT_CS 33
+// #define TFT_DC 25
+// #define TFT_RESET 26
 
 // gps
-#define GPS_TX 16
-#define GPS_RX 17
+#define GPS_RX 13
+#define GPS_TX 12

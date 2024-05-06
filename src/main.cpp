@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief mini-gps
- * @version 0.1
- * @date 2024-05-02
+ * @version 1.0
+ * @date 2024-05-06
  *
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
@@ -47,14 +47,8 @@
 #define GPS_BAUD 9600
 #define MAX_SATELLITES 40
 
-// tasks & timers
-#define TASK_STACK_SIZE 4096    // in bytes
-#define IO_REFRESH_RATE 50      // in RTOS ticks (1 tick = ~1 millisecond)
-#define GPS_REFRESH_RATE 5000   // in RTOS ticks (1 tick = ~1 millisecond)
-#define DISPLAY_REFRESH_RATE 50 // in RTOS ticks (1 tick = ~1 millisecond)
-#define DEBUG_REFRESH_RATE 1000 // in RTOS ticks (1 tick = ~1 millisecond)
-
-#define ENABLE_DEBUG true // master debug message control
+// debugging
+#define ENABLE_DEBUGGING true
 
 /*
 ===============================================================================================
@@ -62,33 +56,10 @@
 ===============================================================================================
 */
 
-/**
- * @brief debugger structure used for organizing debug information
- */
-Debugger debugger = {
-    // debug toggle
-    .debugEnabled = ENABLE_DEBUG,
-    .IO_debugEnabled = false,
-    .display_debugEnabled = false,
-    .scheduler_debugEnable = true,
-
-    // .displayMode = HOME,
-
-    // .outgoingMessage = {},
-
-    // scheduler data
-    .ioTaskCount = 0,
-    .gpsTaskCount = 0,
-    .displayTaskCount = 0,
-
-    .ioTaskPreviousCount = 0,
-    .gpsTaskPreviousCount = 0,
-    .displayTaskPreviousCount = 0,
-};
-
 Data data = {
     .connected = false,
     .wasConnected = false,
+    .rtcDataValid = true,
 
     .latitude = 0.0f,
     .longitude = 0.0f,
@@ -103,13 +74,11 @@ Data data = {
     .hour = 0,
     .minute = 0,
     .second = 0,
+    .centisecond = 0,
 
     .numSats = 0,
     .satellites = {MAX_SATELLITES},
 };
-
-// mutex
-SemaphoreHandle_t xMutex = NULL;
 
 // gps
 TinyGPSPlus gps;
@@ -122,19 +91,11 @@ TinyGPSCustom elevation[4];
 TinyGPSCustom azimuth[4];
 TinyGPSCustom snr[4];
 
-SoftwareSerial gpsSerial(GPS_RX, GPS_TX);
+// serial connection to the GPS device
+SoftwareSerial ss(GPS_RX, GPS_TX);
 
 // display
 TFT_eSPI tft = TFT_eSPI();
-
-// hardware timer
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-
-// rtos task handles
-TaskHandle_t xHandleIO = NULL;
-TaskHandle_t xHandleGPS = NULL;
-TaskHandle_t xHandleDisplay = NULL;
-TaskHandle_t xHandleDebug = NULL;
 
 /*
 ===============================================================================================
@@ -142,17 +103,8 @@ TaskHandle_t xHandleDebug = NULL;
 ===============================================================================================
 */
 
-// tasks
-void IOTask(void *pvParameters);
-void GPSTask(void *pvParameters);
-void DisplayTask(void *pvParameters);
-void DebugTask(void *pvParameters);
-
-// helpers
-void TrackSatellites();
-void GPSDateTime();
-void GPSSpeed();
-String TaskStateToString(eTaskState state);
+void UpdateDisplay();
+void UpdateGPS();
 
 /*
 ===============================================================================================
@@ -162,43 +114,20 @@ String TaskStateToString(eTaskState state);
 
 void setup()
 {
-  // set power configuration
-  esp_pm_configure(&power_configuration);
-
-  if (debugger.debugEnabled)
-  {
-    vTaskDelay(3000); // delay startup by 3 seconds
-  }
-
-  struct Setup
-  {
-    bool ioActive = false;
-    bool gpsActive = false;
-    bool displayActive = false;
-  } setup;
-
   // --------------------------- initialize serial  --------------------------- //
   Serial.begin(9600);
   Serial.printf("\n\n|--- starting setup ---|\n\n");
   // -------------------------------------------------------------------------- //
 
-  // -------------------------- initialize gpio ------------------------------ //
-  // analogReadResolution(12);
+  // -------------------------- initialize display --------------------------- //
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
 
-  // inputs
-  // esp_sleep_enable_ext0_wakeup((gpio_num_t)SLEEP_BUTTON_PIN, LOW);
-
-  // outputs
-
-  // interrupts
-
-  setup.ioActive = true;
-  Serial.printf("gpio init [ success ]\n");
+  Serial.printf("display init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  gpsSerial.begin(GPS_BAUD);
-
   // init sat trackers
   for (int i = 0; i < 4; ++i)
   {
@@ -208,418 +137,14 @@ void setup()
     snr[i].begin(gps, "GPGSV", 7 + 4 * i);       // offsets 7, 11, 15, 19
   }
 
-  setup.gpsActive = true;
+  ss.begin(GPS_BAUD);
+  Serial.printf("gps lib version: %s\n", TinyGPSPlus::libraryVersion());
+
   Serial.printf("gps init [ success ]\n");
   // -------------------------------------------------------------------------- //
-  // -------------------------- initialize display --------------------------- //
-  tft.init();
-  tft.setRotation(1);
-  tft.fillScreen(TFT_BLACK);
 
-  setup.displayActive = true;
-  Serial.printf("display init [ success ]\n");
-  // -------------------------------------------------------------------------- //
-
-  // --------------------- scheduler & task status ---------------------------- //
-  // init mutex
-  xMutex = xSemaphoreCreateMutex();
-
-  // task setup status
-  Serial.printf("\ntask setup status:\n");
-  Serial.printf("i/o task setup: %s\n", setup.ioActive ? "complete" : "failed");
-  Serial.printf("gps task setup: %s\n", setup.gpsActive ? "complete" : "failed");
-  Serial.printf("display task setup: %s\n", setup.displayActive ? "complete" : "failed");
-
-  // start tasks
-  if (xMutex != NULL)
-  {
-    if (setup.ioActive)
-    {
-      xTaskCreate(IOTask, "IO-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIO);
-    }
-
-    if (setup.gpsActive)
-    {
-      xTaskCreate(GPSTask, "GPS-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleGPS);
-    }
-
-    if (setup.displayActive)
-    {
-      xTaskCreate(DisplayTask, "Display-Task", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDisplay);
-    }
-
-    if (debugger.debugEnabled == true)
-    {
-      xTaskCreate(DebugTask, "Debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
-    }
-  }
-  else
-  {
-    Serial.printf("FAILED TO INIT MUTEX!\nHALTING OPERATIONS!");
-    while (1)
-    {
-    };
-  }
-  // task status
-  Serial.printf("\ntask status:\n");
-  if (xHandleIO != NULL)
-    Serial.printf("i/o task status: %s\n", TaskStateToString(eTaskGetState(xHandleIO)));
-  else
-    Serial.printf("i/o task status: DISABLED!\n");
-
-  if (xHandleGPS != NULL)
-    Serial.printf("gps task status: %s\n", TaskStateToString(eTaskGetState(xHandleGPS)));
-  else
-    Serial.printf("gps task status: DISABLED!\n");
-
-  if (xHandleDisplay != NULL)
-    Serial.printf("display task status: %s\n", TaskStateToString(eTaskGetState(xHandleDisplay)));
-  else
-    Serial.printf("display task status: DISABLED!\n");
-
-  // scheduler status
-  if (xTaskGetSchedulerState() == 2)
-  {
-    Serial.printf("\nscheduler status: running\n");
-
-    // clock frequency
-    rtc_cpu_freq_config_t clock_config;
-    rtc_clk_cpu_freq_get_config(&clock_config);
-    Serial.printf("soc frequency: %dMHz\n", clock_config.freq_mhz);
-  }
-  else
-  {
-    Serial.printf("\nscheduler status: FAILED\nHALTING OPERATIONS");
-    while (1)
-    {
-    };
-  }
   Serial.printf("\n\n|--- end setup ---|\n\n");
   // --------------------------------------------------------------------------- //
-}
-
-/*
-===============================================================================================
-                                freertos task functions
-===============================================================================================
-*/
-
-/**
- * @brief i/o task
- * @param pvParameters parameters passed to task
- */
-void IOTask(void *pvParameters)
-{
-  for (;;)
-  {
-    // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
-    {
-      // activate light sleep
-      if (digitalRead(SLEEP_BUTTON_PIN) == LOW)
-      {
-        // engage deep sleep
-        // esp_deep_sleep_start();
-      }
-
-      // release mutex!
-      xSemaphoreGive(xMutex);
-    }
-
-    // debugging
-    if (debugger.debugEnabled)
-    {
-      debugger.gpsTaskCount++;
-    }
-
-    // limit task refresh rate
-    vTaskDelay(IO_REFRESH_RATE);
-  }
-}
-
-/**
- * @brief gps task
- * @param pvParameters parameters passed to task
- */
-void GPSTask(void *pvParameters)
-{
-  for (;;)
-  {
-    // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
-    {
-      if (gpsSerial.available())
-      {
-        gps.encode(gpsSerial.read());
-
-        // sat tracking
-        TrackSatellites();
-        data.numSats = gps.satellites.value();
-
-        // current gps position data
-        if (gps.location.isUpdated() && gps.location.isValid())
-        {
-          data.connected = true;
-
-          data.latitude = gps.location.lat();
-          data.longitude = gps.location.lng();
-          data.altitude = gps.altitude.meters();
-        }
-        else
-        {
-          data.connected = false;
-        }
-
-        // gps date and time data
-        if (gps.date.isUpdated() && gps.date.isValid())
-        {
-          data.year = gps.date.year();
-          data.month = gps.date.month();
-          data.day = gps.date.day();
-        }
-        if (gps.time.isUpdated() && gps.time.isValid())
-        {
-          data.hour = gps.time.hour();
-          data.minute = gps.time.minute();
-          data.second = gps.time.second();
-        }
-
-        // gps speed data
-        if (gps.speed.isUpdated() && gps.speed.isValid())
-        {
-          data.speed = gps.speed.mph();
-        }
-      }
-
-      // release mutex!
-      xSemaphoreGive(xMutex);
-    }
-
-    // debugging
-    if (debugger.debugEnabled)
-    {
-      debugger.gpsTaskCount++;
-    }
-
-    // limit task refresh rate
-    vTaskDelay(GPS_REFRESH_RATE);
-  }
-}
-
-/**
- * @brief manages the display
- * @param pvParameters parameters passed to task
- */
-void DisplayTask(void *pvParameters)
-{
-  for (;;)
-  {
-    // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
-    {
-      // clear screen on state change
-      if (data.wasConnected != data.connected)
-      {
-        data.wasConnected = data.connected;
-        tft.fillScreen(TFT_BLACK);
-      }
-
-      // check connection
-      if (data.connected)
-      {
-        // display gps information
-        tft.setTextSize(3);
-        tft.setTextColor(TFT_RED);
-        tft.setCursor(0, 0);
-        tft.printf("gps data:");
-
-        tft.setTextSize(2);
-        tft.setTextColor(TFT_CYAN);
-        tft.setCursor(0, 30);
-        tft.printf("latitude: %f", data.latitude);
-
-        tft.setCursor(0, 50);
-        tft.printf("longitude: %f", data.longitude);
-
-        tft.setCursor(0, 70);
-        tft.printf("altitude: %f", data.altitude);
-
-        tft.setTextColor(TFT_PURPLE);
-        tft.setCursor(0, 90);
-        tft.printf("current speed (mph): %.1f", data.speed);
-
-        tft.setTextColor(TFT_GREEN);
-        tft.setCursor(0, 120);
-        tft.printf("date: %d - %d - %d", data.year, data.month, data.day);
-
-        tft.setCursor(0, 140);
-        tft.printf("time: %d : %d : %d", data.hour, data.minute, data.second);
-
-        tft.setTextColor(TFT_WHITE);
-        tft.setCursor(0, 200);
-        tft.printf("avg conn strength: %.2f", data.avgSignalStrength);
-
-        tft.setCursor(0, 220);
-        tft.printf("# satellites: %d", data.numSats);
-      }
-      else
-      {
-        tft.setTextSize(2);
-        tft.setCursor(15, 110);
-        tft.printf("< searching for signal >");
-      }
-
-      // release mutex!
-      xSemaphoreGive(xMutex);
-    }
-
-    // debugging
-    if (debugger.debugEnabled)
-    {
-      debugger.displayTaskCount++;
-    }
-
-    // limit task refresh rate
-    vTaskDelay(DISPLAY_REFRESH_RATE);
-  }
-}
-
-/**
- * @brief manages toggle-able debug settings & scheduler debugging
- */
-void DebugTask(void *pvParameters)
-{
-  for (;;)
-  {
-    // I/O
-    if (debugger.IO_debugEnabled)
-    {
-      PrintIODebug();
-    }
-
-    // Scheduler
-    if (debugger.scheduler_debugEnable)
-    {
-      PrintSchedulerDebug();
-    }
-
-    // limit refresh rate
-    vTaskDelay(DEBUG_REFRESH_RATE);
-  }
-}
-
-/*
-===============================================================================================
-                                    helper functions
-================================================================================================
-*/
-
-void TrackSatellites()
-{
-  // gather data about connected satellites
-  if (totalGPGSVMessages.isUpdated())
-  {
-    for (int i = 0; i < 4; ++i)
-    {
-      int no = atoi(satNumber[i].value());
-      if (no >= 1 && no <= MAX_SATELLITES)
-      {
-        data.satellites[no - 1].elevation = atoi(elevation[i].value());
-        data.satellites[no - 1].azimuth = atoi(azimuth[i].value());
-        data.satellites[no - 1].snr = atoi(snr[i].value());
-        data.satellites[no - 1].active = true;
-      }
-    }
-
-    int totalMessages = atoi(totalGPGSVMessages.value());
-    int currentMessage = atoi(messageNumber.value());
-    if (totalMessages == currentMessage)
-    {
-      // active sats
-      for (int i = 0; i < MAX_SATELLITES; ++i)
-      {
-        if (data.satellites[i].active)
-        {
-          // idk
-        }
-      }
-
-      // elevation
-      for (int i = 0; i < MAX_SATELLITES; ++i)
-      {
-        if (data.satellites[i].active)
-        {
-          // Serial.print(data.satellites[i].elevation);
-          // Serial.print(F(" "));
-        }
-      }
-
-      // azimuth
-      for (int i = 0; i < MAX_SATELLITES; ++i)
-      {
-        if (data.satellites[i].active)
-        {
-          // Serial.print(data.satellites[i].azimuth);
-          // Serial.print(F(" "));
-        }
-      }
-
-      // signal to noise ratio
-      float runSum = 0;
-      int count = 0;
-      for (int i = 0; i < MAX_SATELLITES; ++i)
-      {
-        if (data.satellites[i].active)
-        {
-          // Serial.print(data.satellites[i].snr);
-          // Serial.print(F(" "));
-          count++;
-          runSum += data.satellites[i].snr;
-        }
-      }
-      data.avgSignalStrength = runSum / count;
-
-      // set all to inactive
-      for (int i = 0; i < MAX_SATELLITES; ++i)
-        data.satellites[i].active = false;
-    }
-  }
-  return;
-}
-
-/**
- *
- */
-String TaskStateToString(eTaskState state)
-{
-  // init
-  String stateStr;
-
-  // get state
-  switch (state)
-  {
-  case eReady:
-    stateStr = "running";
-    break;
-
-  case eBlocked:
-    stateStr = "blocked";
-    break;
-
-  case eSuspended:
-    stateStr = "suspended";
-    break;
-
-  case eDeleted:
-    stateStr = "DELETED";
-    break;
-
-  default:
-    stateStr = "ERROR";
-    break;
-  }
-
-  return stateStr;
 }
 
 /*
@@ -628,80 +153,234 @@ String TaskStateToString(eTaskState state)
 ===============================================================================================
 */
 
-/**
- * @brief main loop!
- */
 void loop()
 {
-  vTaskDelay(1); // prevent watchdog from getting upset & for debugging, limit print refresh rate
+  // update data every time a new sentence is correctly encoded
+  while (ss.available() > 0)
+  {
+    if (gps.encode(ss.read()))
+    {
+      UpdateGPS();
+    }
+  }
+
+  if (millis() > 5000 && gps.charsProcessed() < 10)
+  {
+    Serial.println(F("No GPS detected: check wiring."));
+    while (true)
+      ;
+  }
+
+  // update display
+  UpdateDisplay();
 }
 
 /*
 ===============================================================================================
-                                    debug functions
-================================================================================================
+                                           functions
+===============================================================================================
 */
 
 /**
- * in-depth debugging for i/o
+ *
  */
-void PrintIODebug()
+void UpdateGPS()
 {
-  Serial.printf("# data.satellites: %d\n", gps.satellites.value());
-  Serial.printf("latitude: %f\n", data.latitude);
-  Serial.printf("longitude: %f\n", data.longitude);
-  Serial.printf("altitude: %f\n", data.altitude);
+  if (gps.satellites.isValid())
+  {
+    data.numSats = gps.satellites.value();
+  }
 
-  Serial.printf("\n\n");
+  if (gps.location.isValid())
+  {
+    data.connected = true;
+
+    data.latitude = gps.location.lat();
+    data.longitude = gps.location.lng();
+    data.altitude = gps.altitude.feet();
+  }
+  else
+  {
+    data.connected = false;
+  }
+
+  if (gps.speed.isValid())
+  {
+    data.speed = gps.speed.mph();
+  }
+
+  if (gps.date.isValid())
+  {
+    data.year = gps.date.year();
+    data.month = gps.date.month();
+    data.day = gps.date.day();
+  }
+
+  if (gps.time.isValid())
+  {
+    data.hour = gps.time.hour();
+    data.minute = gps.time.minute();
+    data.second = gps.time.second();
+    data.centisecond = gps.time.centisecond();
+  }
+
+  if (ENABLE_DEBUGGING)
+  {
+    Serial.print(F("Location: "));
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(F(","));
+    Serial.print(gps.location.lng(), 6);
+
+    Serial.print(F(" | Speed: "));
+    Serial.print(gps.speed.mph());
+
+    Serial.print(F(" | Date/Time: "));
+    Serial.print(gps.date.month());
+    Serial.print(F("/"));
+    Serial.print(gps.date.day());
+    Serial.print(F("/"));
+    Serial.print(gps.date.year());
+
+    Serial.print(F(" "));
+
+    if (gps.time.hour() < 10)
+      Serial.print(F("0"));
+    Serial.print(gps.time.hour());
+    Serial.print(F(":"));
+    if (gps.time.minute() < 10)
+      Serial.print(F("0"));
+    Serial.print(gps.time.minute());
+    Serial.print(F(":"));
+    if (gps.time.second() < 10)
+      Serial.print(F("0"));
+    Serial.print(gps.time.second());
+    Serial.print(F("."));
+    if (gps.time.centisecond() < 10)
+      Serial.print(F("0"));
+    Serial.print(gps.time.centisecond());
+
+    Serial.printf(" | signal status: %s", data.connected ? "connected" : "not connected");
+
+    Serial.println();
+  }
 }
 
-/**
- * in-dept debugging for the scheduler
- */
-void PrintSchedulerDebug()
+void UpdateDisplay()
 {
-  // inits
-  std::vector<eTaskState> taskStates;
-  std::vector<String> taskStatesStrings;
-  std::vector<int> taskRefreshRate;
-  int uptime = esp_rtc_get_time_us() / 1000000;
-
-  // gather task information
-  if (xHandleIO != NULL)
+  // clear screen on state change
+  if (data.wasConnected != data.connected || data.rtcDataValid != gps.time.isValid())
   {
-    taskStates.push_back(eTaskGetState(xHandleIO));
+    data.wasConnected = data.connected;
+    data.rtcDataValid = gps.time.isValid();
+    tft.fillScreen(TFT_BLACK);
   }
 
-  if (xHandleGPS != NULL)
+  // check connection
+  if (data.connected || gps.time.isValid())
   {
-    taskStates.push_back(eTaskGetState(xHandleGPS));
+    // display gps information
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_RED);
+    tft.setCursor(0, 0);
+    tft.printf("gps data:");
+
+    // set info font size and color
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
+
+    // location data
+    if (gps.location.isValid())
+    {
+      tft.setCursor(0, 30);
+      tft.printf("latitude: %f", data.latitude);
+
+      tft.setCursor(0, 50);
+      tft.printf("longitude: %f", data.longitude);
+
+      tft.setCursor(0, 70);
+      tft.printf("altitude: %f", data.altitude);
+    }
+    else
+    {
+      tft.setCursor(0, 30);
+      tft.printf("latitude: ---.---");
+
+      tft.setCursor(0, 50);
+      tft.printf("longitude: ---.--");
+
+      tft.setCursor(0, 70);
+      tft.printf("altitude: ---.---");
+    }
+
+    // speed data
+    tft.setTextColor(TFT_PURPLE, TFT_BLACK, true);
+    tft.setCursor(0, 90);
+    if (gps.speed.isValid())
+    {
+      tft.printf("current speed (mph): %.1f", data.speed);
+    }
+    else
+    {
+      tft.printf("current speed (mph): ---", data.speed);
+    }
+
+    // date and time
+    tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+
+    if (gps.date.isValid())
+    {
+      tft.setCursor(0, 120);
+      tft.printf("date: %d/%d/%d", data.year, data.month, data.day);
+    }
+    else
+    {
+      tft.setCursor(0, 120);
+      tft.printf("date: __/__/__");
+    }
+    if (gps.time.isValid())
+    {
+      tft.setCursor(0, 140);
+      tft.printf("time: %d:%d:%d:%d", data.hour, data.minute, data.second, data.centisecond);
+    }
+    else
+    {
+      tft.setCursor(0, 140);
+      tft.printf("time: ---:---:---:---", data.hour, data.minute, data.second);
+    }
+
+    // connection data
+    tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
+
+    tft.setCursor(0, 200);
+    if (data.connected)
+    {
+      tft.printf("# satellites: %d", data.numSats);
+    }
+    else
+    {
+      tft.printf("no signal!");
+    }
+
+    if (data.numSats != 0)
+    {
+      tft.setCursor(0, 220);
+      tft.printf("avg conn strength: %.2f", data.avgSignalStrength);
+    }
+    else
+    {
+      tft.setCursor(0, 220);
+      tft.printf("avg conn strength: ---", data.avgSignalStrength);
+    }
   }
 
-  if (xHandleDisplay != NULL)
+  // no connection and no rtc
+  else
   {
-    taskStates.push_back(eTaskGetState(xHandleDisplay));
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_RED, TFT_BLACK, true);
+    tft.setCursor(80, 110);
+    tft.printf("< no signal >");
+    tft.setCursor(40, 130);
+    tft.printf("< rtc data invalid >");
   }
-
-  taskRefreshRate.push_back(debugger.ioTaskCount - debugger.ioTaskPreviousCount);
-  taskRefreshRate.push_back(debugger.gpsTaskCount - debugger.gpsTaskPreviousCount);
-  taskRefreshRate.push_back(debugger.displayTaskCount - debugger.displayTaskPreviousCount);
-
-  // make it usable
-  for (int i = 0; i < taskStates.size() - 1; ++i)
-  {
-    taskStatesStrings.push_back(TaskStateToString(taskStates.at(i)));
-  }
-
-  // print
-  Serial.printf("uptime: %d sec | io: (%u)<%d Hz> | gps:(%u)<%d Hz> | display: (%u)<%d Hz>\r",
-                uptime, debugger.ioTaskCount, taskRefreshRate.at(0),
-                debugger.gpsTaskCount, taskRefreshRate.at(1),
-                debugger.displayTaskCount, taskRefreshRate.at(2));
-
-  // update counters
-  debugger.ioTaskPreviousCount = debugger.ioTaskCount;
-  debugger.gpsTaskPreviousCount = debugger.gpsTaskCount;
-  debugger.displayTaskPreviousCount = debugger.displayTaskCount;
-
-  return;
 }

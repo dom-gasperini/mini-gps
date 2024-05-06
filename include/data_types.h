@@ -2,8 +2,8 @@
  * @file data_types.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 0.1
- * @date 2024-05-02
+ * @version 1.0
+ * @date 2024-05-06
  */
 
 /*
@@ -36,6 +36,7 @@ typedef struct Data
 {
     bool connected;
     bool wasConnected;
+    bool rtcDataValid;
 
     double latitude;
     double longitude;
@@ -50,6 +51,7 @@ typedef struct Data
     int hour;
     int minute;
     int second;
+    int centisecond;
 
     float avgSignalStrength;
 
