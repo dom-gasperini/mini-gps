@@ -51,12 +51,8 @@ typedef struct Data
     int hour;
     int minute;
     int second;
-    int centisecond;
-
-    float avgSignalStrength;
 
     int numSats;
-    SatelliteData satellites[];
 } Data;
 
 /**

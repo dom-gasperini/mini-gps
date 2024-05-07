@@ -48,7 +48,7 @@
 #define MAX_SATELLITES 40
 
 // debugging
-#define ENABLE_DEBUGGING false
+#define ENABLE_DEBUGGING true
 
 /*
 ===============================================================================================
@@ -74,10 +74,8 @@ Data data = {
     .hour = 0,
     .minute = 0,
     .second = 0,
-    .centisecond = 0,
 
     .numSats = 0,
-    .satellites = {MAX_SATELLITES},
 };
 
 // gps
@@ -90,6 +88,14 @@ TinyGPSCustom satNumber[4];
 TinyGPSCustom elevation[4];
 TinyGPSCustom azimuth[4];
 TinyGPSCustom snr[4];
+
+struct
+{
+  bool active;
+  int elevation;
+  int azimuth;
+  int snr;
+} sats[MAX_SATELLITES];
 
 // serial connection to the GPS device
 SoftwareSerial ss(GPS_RX, GPS_TX);
@@ -105,6 +111,7 @@ TFT_eSPI tft = TFT_eSPI();
 
 void UpdateDisplay();
 void UpdateGPS();
+float calculateSignalStrength();
 
 /*
 ===============================================================================================
@@ -189,19 +196,23 @@ void UpdateGPS()
   if (gps.satellites.isValid())
   {
     data.numSats = gps.satellites.value();
+
+    if (data.numSats == 0)
+    {
+      data.connected = false;
+    }
+    else
+    {
+      data.connected = true;
+    }
   }
 
   if (gps.location.isValid())
   {
-    data.connected = true;
 
     data.latitude = gps.location.lat();
     data.longitude = gps.location.lng();
     data.altitude = gps.altitude.feet();
-  }
-  else
-  {
-    data.connected = false;
   }
 
   if (gps.speed.isValid())
@@ -221,7 +232,6 @@ void UpdateGPS()
     data.hour = gps.time.hour();
     data.minute = gps.time.minute();
     data.second = gps.time.second();
-    data.centisecond = gps.time.centisecond();
   }
 
   if (ENABLE_DEBUGGING)
@@ -344,11 +354,11 @@ void UpdateDisplay()
     tft.setCursor(5, 150);
     if (gps.time.isValid())
     {
-      tft.printf("time: %d:%d:%d:%d (UTC)", data.hour, data.minute, data.second, data.centisecond);
+      tft.printf("time: %d:%d:%d (UTC) ", data.hour, data.minute, data.second); // intentional space at the end to fix visual artifacts with seconds
     }
     else
     {
-      tft.printf("time: ---:---:---:--- (UTC)", data.hour, data.minute, data.second);
+      tft.printf("time: ---:---:--- (UTC) ", data.hour, data.minute, data.second);
     }
 
     // connection data
@@ -370,11 +380,11 @@ void UpdateDisplay()
     tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
     if (data.numSats != 0)
     {
-      tft.printf("signal strength: %.2f", data.avgSignalStrength);
+      tft.printf("signal strength: %.2f", calculateSignalStrength());
     }
     else
     {
-      tft.printf("signal strength: ---", data.avgSignalStrength);
+      tft.printf("signal strength: ---", calculateSignalStrength());
     }
   }
 
@@ -388,4 +398,77 @@ void UpdateDisplay()
     tft.setCursor(40, 130);
     tft.printf("< rtc data invalid >");
   }
+}
+
+/**
+ *
+ */
+float calculateSignalStrength()
+{
+  // inits
+  float avg = 0.0f;
+  float runSum = 0;
+
+  if (totalGPGSVMessages.isUpdated())
+  {
+    for (int i = 0; i < 4; ++i)
+    {
+      int no = atoi(satNumber[i].value());
+      // Serial.print(F("SatNumber is ")); Serial.println(no);
+      if (no >= 1 && no <= MAX_SATELLITES)
+      {
+        sats[no - 1].elevation = atoi(elevation[i].value());
+        sats[no - 1].azimuth = atoi(azimuth[i].value());
+        sats[no - 1].snr = atoi(snr[i].value());
+        sats[no - 1].active = true;
+      }
+    }
+
+    int totalMessages = atoi(totalGPGSVMessages.value());
+    int currentMessage = atoi(messageNumber.value());
+    if (totalMessages == currentMessage)
+    {
+      // Serial.print(F("Sats="));
+      // Serial.print(gps.satellites.value());
+      // Serial.print(F(" Nums="));
+      for (int i = 0; i < MAX_SATELLITES; ++i)
+        //   if (sats[i].active)
+        //   {
+        //     Serial.print(i + 1);
+        //     Serial.print(F(" "));
+        //   }
+        // Serial.print(F(" Elevation="));
+        // for (int i = 0; i < MAX_SATELLITES; ++i)
+        //   if (sats[i].active)
+        //   {
+        //     Serial.print(sats[i].elevation);
+        //     Serial.print(F(" "));
+        //   }
+        // Serial.print(F(" Azimuth="));
+        // for (int i = 0; i < MAX_SATELLITES; ++i)
+        //   if (sats[i].active)
+        //   {
+        //     Serial.print(sats[i].azimuth);
+        //     Serial.print(F(" "));
+        //   }
+
+        // Serial.print(F(" SNR="));
+        for (int i = 0; i < MAX_SATELLITES; ++i)
+          if (sats[i].active)
+          {
+            runSum += sats[i].snr;
+            // Serial.print(sats[i].snr);
+            // Serial.print(F(" "));
+          }
+      // Serial.println();
+
+      for (int i = 0; i < MAX_SATELLITES; ++i)
+        sats[i].active = false;
+    }
+  }
+
+  // calcualate average signal strength
+  avg = runSum / 4.0; // hardcoded number of sats to parse
+
+  return avg;
 }
