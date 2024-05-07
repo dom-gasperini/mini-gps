@@ -102,6 +102,7 @@ SoftwareSerial ss(GPS_RX, GPS_TX);
 
 // display
 TFT_eSPI tft = TFT_eSPI();
+int refreshCounter = 0;
 
 /*
 ===============================================================================================
@@ -401,6 +402,27 @@ void UpdateDisplay()
   // no connection and no rtc
   else
   {
+    // flash a circle top left as activity indicator
+    if (refreshCounter <= 50)
+    {
+      tft.fillCircle(10, 10, 10, TFT_GREEN);
+    }
+    if (refreshCounter >= 50)
+    {
+      tft.fillCircle(10, 10, 10, TFT_BLACK);
+    }
+    if (refreshCounter >= 100)
+    {
+      refreshCounter = 0;
+    }
+    refreshCounter++;
+
+    tft.setTextColor(TFT_RED, TFT_BLACK, true);
+    tft.setCursor(30, 5);
+    tft.printf("searching...");
+
+
+    // info
     tft.setTextSize(2);
     tft.setTextColor(TFT_RED, TFT_BLACK, true);
     tft.setCursor(80, 110);
