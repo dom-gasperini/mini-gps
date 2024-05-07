@@ -36,6 +36,8 @@ typedef struct Data
 {
     bool connected;
     bool wasConnected;
+
+    bool wasRtcDataValid;
     bool rtcDataValid;
 
     double latitude;

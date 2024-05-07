@@ -128,7 +128,7 @@ void setup()
 
   // -------------------------- initialize display --------------------------- //
   tft.init();
-  tft.setRotation(1);
+  tft.setRotation(3);
   tft.fillScreen(TFT_BLACK);
 
   Serial.printf("display init [ success ]\n");
@@ -227,6 +227,16 @@ void UpdateGPS()
     data.day = gps.date.day();
   }
 
+  // test for active rtc
+  if (gps.date.month() == 0 && gps.date.day() == 0)
+  {
+    data.rtcDataValid = false;
+  }
+  else
+  {
+    data.rtcDataValid = true;
+  }
+
   if (gps.time.isValid())
   {
     data.hour = gps.time.hour();
@@ -278,15 +288,15 @@ void UpdateGPS()
 void UpdateDisplay()
 {
   // clear screen on state change
-  if (data.wasConnected != data.connected || data.rtcDataValid != gps.time.isValid())
+  if ((data.wasConnected != data.connected) || data.rtcDataValid != data.wasRtcDataValid)
   {
     data.wasConnected = data.connected;
-    data.rtcDataValid = gps.time.isValid();
+    data.wasRtcDataValid = data.rtcDataValid;
     tft.fillScreen(TFT_BLACK);
   }
 
   // check connection
-  if (data.connected || gps.time.isValid())
+  if (data.connected || data.rtcDataValid)
   {
     // display gps information
     tft.setTextSize(3);
