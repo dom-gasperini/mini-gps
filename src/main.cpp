@@ -388,7 +388,7 @@ void UpdateDisplay()
     {
       tft.setCursor(5, 190);
       tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-      tft.printf("satellites connected: %d", data.numSats);
+      tft.printf("satellites connected: %d   ", data.numSats);
     }
     else
     {
@@ -413,7 +413,7 @@ void UpdateDisplay()
     tft.setCursor(150, 220);
     if (data.numSats > 3)
     {
-      tft.setTextColor(TFT_WHITE, TFT_RED, true);
+      tft.setTextColor(TFT_WHITE, TFT_GREEN, true);
       tft.printf("location data");
     }
     else
