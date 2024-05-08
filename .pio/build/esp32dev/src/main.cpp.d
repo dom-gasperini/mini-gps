@@ -131,12 +131,6 @@
  /home/dom/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_hw_support/include/soc/esp32/spiram.h \
  /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
- /home/dom/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_hw_support/include/soc/esp32/rtc.h \
- /home/dom/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_hw_support/port/esp32/rtc_clk_common.h \
- /home/dom/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
- /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
- /home/dom/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
- /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
  .pio/libdeps/esp32dev/EspSoftwareSerial/src/SoftwareSerial.h \
  .pio/libdeps/esp32dev/ghostl/src/circular_queue.h \
  .pio/libdeps/esp32dev/ghostl/src/Delegate.h \
@@ -144,6 +138,8 @@
  .pio/libdeps/esp32dev/TinyGPSPlus/src/TinyGPS++.h \
  .pio/libdeps/esp32dev/TFT_eSPI/TFT_eSPI.h \
  /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
+ /home/dom/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
+ /home/dom/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
  .pio/libdeps/esp32dev/TFT_eSPI/User_Setup_Select.h \
  .pio/libdeps/esp32dev/TFT_eSPI/User_Setup.h \
  .pio/libdeps/esp32dev/TFT_eSPI/TFT_Drivers/ILI9341_Defines.h \

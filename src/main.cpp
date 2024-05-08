@@ -3,11 +3,11 @@
  * @author dom gasperini
  * @brief mini-gps
  * @version 1.0
- * @date 2024-05-06
+ * @date 2024-05-08
  *
  * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
- * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/freertos_idf.html      (FreeRTOS for ESP32 docs)
+ * @ref https://github.com/mikalhart/TinyGPSPlus                                                                (gps library)
  */
 
 /*
@@ -18,18 +18,13 @@
 
 // core
 #include <Arduino.h>
-#include "rtc.h"
-#include "rtc_clk_common.h"
-#include <vector>
-#include <Wire.h>
-#include <SPI.h>
 
 // functionality
 #include "SoftwareSerial.h"
 #include "TinyGPSPlus.h"
 #include <TFT_eSPI.h>
 
-// custom headers
+// custom
 #include <data_types.h>
 #include <pin_config.h>
 
@@ -39,13 +34,8 @@
 ===============================================================================================
 */
 
-// display
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-
 // gps
 #define GPS_BAUD 9600
-#define MAX_SATELLITES 40
 
 // debugging
 #define ENABLE_DEBUGGING true
@@ -80,25 +70,9 @@ Data data = {
 
 // gps
 TinyGPSPlus gps;
-TinyGPSCustom totalGPGSVMessages(gps, "GPGSV", 1); // $GPGSV sentence, first element
-TinyGPSCustom messageNumber(gps, "GPGSV", 2);      // $GPGSV sentence, second element
-TinyGPSCustom satellitesInView(gps, "GPGSV", 3);   // $GPGSV sentence, third element
-
-TinyGPSCustom satNumber[4];
-TinyGPSCustom elevation[4];
-TinyGPSCustom azimuth[4];
-TinyGPSCustom snr[4];
-
-struct
-{
-  bool active;
-  int elevation;
-  int azimuth;
-  int snr;
-} sats[MAX_SATELLITES];
 
 // serial connection to the GPS device
-SoftwareSerial ss(GPS_RX, GPS_TX);
+SoftwareSerial gpsSerial(GPS_RX, GPS_TX);
 
 // display
 TFT_eSPI tft = TFT_eSPI();
@@ -107,7 +81,7 @@ int rtcTestCounter = 0;
 
 /*
 ===============================================================================================
-                                  function declarations
+                                function declarations
 ===============================================================================================
 */
 
@@ -116,7 +90,7 @@ void UpdateGPS();
 
 /*
 ===============================================================================================
-                                  setup
+                                        setup
 ===============================================================================================
 */
 
@@ -136,16 +110,7 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  // init sat trackers
-  for (int i = 0; i < 4; ++i)
-  {
-    satNumber[i].begin(gps, "GPGSV", 4 + 4 * i); // offsets 4, 8, 12, 16
-    elevation[i].begin(gps, "GPGSV", 5 + 4 * i); // offsets 5, 9, 13, 17
-    azimuth[i].begin(gps, "GPGSV", 6 + 4 * i);   // offsets 6, 10, 14, 18
-    snr[i].begin(gps, "GPGSV", 7 + 4 * i);       // offsets 7, 11, 15, 19
-  }
-
-  ss.begin(GPS_BAUD);
+  gpsSerial.begin(GPS_BAUD);
   Serial.printf("gps lib version: %s\n", TinyGPSPlus::libraryVersion());
 
   Serial.printf("gps init [ success ]\n");
@@ -157,43 +122,36 @@ void setup()
 
 /*
 ===============================================================================================
-                                    main loop
+                                      main loop
 ===============================================================================================
 */
 
 void loop()
 {
   // update data every time a new sentence is correctly encoded
-  while (ss.available() > 0)
+  while (gpsSerial.available() > 0)
   {
-    if (gps.encode(ss.read()))
+    if (gps.encode(gpsSerial.read()))
     {
       UpdateGPS();
     }
   }
 
-  if (millis() > 5000 && gps.charsProcessed() < 10)
-  {
-    Serial.println(F("No GPS detected: check wiring."));
-    while (true)
-      ;
-  }
-
-  // update display
   UpdateDisplay();
 }
 
 /*
 ===============================================================================================
-                                           functions
+                                      functions
 ===============================================================================================
 */
 
 /**
- *
+ *  @brief read and update gps data
  */
 void UpdateGPS()
 {
+  // connection data
   if (gps.satellites.isValid())
   {
     data.numSats = gps.satellites.value();
@@ -208,6 +166,7 @@ void UpdateGPS()
     }
   }
 
+  // collect location data
   if (gps.location.isValid())
   {
 
@@ -216,11 +175,13 @@ void UpdateGPS()
     data.altitude = gps.altitude.feet();
   }
 
+  // collect speed data
   if (gps.speed.isValid())
   {
     data.speed = gps.speed.mph();
   }
 
+  // collect date data
   if (gps.date.isValid())
   {
     data.year = gps.date.year();
@@ -228,6 +189,7 @@ void UpdateGPS()
     data.day = gps.date.day();
   }
 
+  // collect time data
   if (gps.time.isValid())
   {
     data.hour = gps.time.hour();
@@ -291,12 +253,16 @@ void UpdateGPS()
     Serial.print(gps.time.centisecond());
 
     Serial.printf(" | signal status: %s", data.connected ? "connected" : "not connected");
+    Serial.printf(" | rtc status: %s", data.rtcDataValid ? "valid" : "not valid");
     Serial.printf(" | #sats: %d", gps.satellites.value());
 
     Serial.println();
   }
 }
 
+/**
+ *  @brief update the display with the newest information and gps state
+ */
 void UpdateDisplay()
 {
   // clear screen on state change
@@ -376,7 +342,7 @@ void UpdateDisplay()
     tft.setCursor(5, 150);
     if (gps.time.isValid())
     {
-      tft.printf("time: %d:%d:%d (UTC)    ", data.hour, data.minute, data.second); // intentional space at the end to fix visual artifacts with seconds
+      tft.printf("time: %d:%d:%d (UTC)    ", data.hour, data.minute, data.second);
     }
     else
     {
@@ -397,33 +363,32 @@ void UpdateDisplay()
       tft.printf("< no signal >");
     }
 
-    // connection stats
+    // time and date downlink status
     tft.setCursor(10, 220);
     if (data.numSats > 0)
     {
       tft.setTextColor(TFT_WHITE, TFT_GREEN, true);
-      tft.printf("time data");
     }
     else
     {
       tft.setTextColor(TFT_WHITE, TFT_RED, true);
-      tft.printf("time data");
     }
+    tft.printf("time data");
 
+    // location downlink status
     tft.setCursor(150, 220);
     if (data.numSats > 3)
     {
       tft.setTextColor(TFT_WHITE, TFT_GREEN, true);
-      tft.printf("location data");
     }
     else
     {
       tft.setTextColor(TFT_WHITE, TFT_RED, true);
-      tft.printf("location data");
     }
+    tft.printf("location data");
   }
 
-  // no connection and no rtc
+  // no connection and no valid rtc data
   else
   {
     // flash a circle top left as activity indicator
@@ -441,11 +406,12 @@ void UpdateDisplay()
     }
     refreshCounter++;
 
+    // text for status indicator
     tft.setTextColor(TFT_RED, TFT_BLACK, true);
     tft.setCursor(30, 5);
     tft.printf("searching...");
 
-    // info
+    // general info
     tft.setTextSize(2);
     tft.setTextColor(TFT_RED, TFT_BLACK, true);
     tft.setCursor(80, 110);
