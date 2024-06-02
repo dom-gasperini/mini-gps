@@ -3,7 +3,7 @@
  * @author dom gasperini
  * @brief mini-gps
  * @version 1.0
- * @date 2024-05-06
+ * @date 2024-06-02
  */
 
 /*
@@ -36,9 +36,10 @@ typedef struct Data
 {
     bool connected;
     bool wasConnected;
-
-    bool wasRtcDataValid;
-    bool rtcDataValid;
+    uint8_t fixQuality;
+    float dtLastFix;
+    float dtSinceDate;
+    float dtSinceTime;
 
     double latitude;
     double longitude;
@@ -66,22 +67,25 @@ typedef struct Debugger
     // debug toggle
     bool debugEnabled;
     bool IO_debugEnabled;
-    bool gps_debugEnabled;
+    bool i2c_debugEnabled;
     bool display_debugEnabled;
     bool scheduler_debugEnable;
 
     // scheduler data
-    unsigned long ioTaskCount;
-    unsigned long gpsTaskCount;
+    unsigned long ioWriteTaskCount;
+    unsigned long ioReadTaskCount;
+    unsigned long i2cTaskCount;
     unsigned long displayTaskCount;
 
-    unsigned long ioTaskPreviousCount;
-    unsigned long gpsTaskPreviousCount;
+    unsigned long ioReadTaskPreviousCount;
+    unsigned long ioWriteTaskPreviousCount;
+    unsigned long i2cTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
 } Debugger;
 
 // debug functions
 void PrintDebug();
-void PrintGPSDebug();
+void PrintI2CDebug();
 void PrintIODebug();
+void PrintDisplayDebug();
 void PrintSchedulerDebug();

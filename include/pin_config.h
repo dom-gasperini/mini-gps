@@ -35,6 +35,10 @@ esp_pm_config_esp32_t power_configuration{
 // inputs
 #define SLEEP_BUTTON_PIN 18
 
+// ic2
+#define I2C_RX_PIN 18
+#define I2C_TX_PIN 19
+
 // display
 // #define TFT_SCK 27
 // #define TFT_MOSI 32
@@ -42,7 +46,3 @@ esp_pm_config_esp32_t power_configuration{
 // #define TFT_CS 33
 // #define TFT_DC 25
 // #define TFT_RESET 26
-
-// gps
-#define GPS_RX 18
-#define GPS_TX 19
