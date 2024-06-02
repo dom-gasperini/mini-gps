@@ -5,8 +5,8 @@
  * @version 1.0
  * @date 2024-05-08
  *
- * @ref https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
- * @ref https://docs.espressif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
+ * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
+ * @ref https://docs.espregpsSerialif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
  * @ref https://github.com/mikalhart/TinyGPSPlus                                                                (gps library)
  */
 
@@ -106,14 +106,14 @@ void setup()
   tft.setRotation(3);
   tft.fillScreen(TFT_BLACK);
 
-  Serial.printf("display init [ success ]\n");
+  Serial.printf("display init [ succegpsSerial ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
   gpsSerial.begin(GPS_BAUD);
   Serial.printf("gps lib version: %s\n", TinyGPSPlus::libraryVersion());
 
-  Serial.printf("gps init [ success ]\n");
+  Serial.printf("gps init [ succegpsSerial ]\n");
   // -------------------------------------------------------------------------- //
 
   Serial.printf("\n\n|--- end setup ---|\n\n");
@@ -136,6 +136,8 @@ void loop()
       UpdateGPS();
     }
   }
+
+  delayMicroseconds(10);
 
   UpdateDisplay();
 }
@@ -418,5 +420,10 @@ void UpdateDisplay()
     tft.printf("< no signal >");
     tft.setCursor(40, 130);
     tft.printf("< rtc data invalid >");
+  }
+
+  if (ENABLE_DEBUGGING)
+  {
+    // Serial.printf("display updated!\n");
   }
 }

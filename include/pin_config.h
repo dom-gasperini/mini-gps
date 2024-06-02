@@ -44,5 +44,5 @@ esp_pm_config_esp32_t power_configuration{
 // #define TFT_RESET 26
 
 // gps
-#define GPS_RX 13
-#define GPS_TX 12
+#define GPS_RX 18
+#define GPS_TX 19
