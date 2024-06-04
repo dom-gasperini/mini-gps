@@ -2,12 +2,12 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief mini-gps
- * @version 1.0
- * @date 2024-05-08
+ * @version 2.0
+ * @date 2024-06-04
  *
  * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espregpsSerialif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
- * @ref https://github.com/mikalhart/TinyGPSPlus                                                                (gps library)
+ * @ref https://github.com/adafruit/Adafruit_GPS                                                                       (gps library)
  */
 
 /*
@@ -41,22 +41,22 @@
 #define I2C_GPS_ADDR 0x10
 
 // display
-#define REFRESH_DELAY 25
+#define REFRESH_DELAY 10
 
 // gps
 #define GPS_BAUD 9600
 
 // tasks
-#define IO_WRITE_REFRESH_RATE 9 // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define IO_READ_REFRESH_RATE 2  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 8      // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 9  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_WRITE_REFRESH_RATE 50 // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_READ_REFRESH_RATE 50  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 50      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 50  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 20000 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING false
+#define ENABLE_DEBUGGING true
 
 /*
 ===============================================================================================
@@ -77,6 +77,7 @@ Data data = {
     .altitude = 0.0f,
 
     .speed = 0.0f,
+    .angle = 0.0f,
 
     .year = 0,
     .month = 0,
@@ -90,11 +91,11 @@ Data data = {
 };
 
 Debugger debugger = {
-    .debugEnabled = false,
+    .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
     .i2c_debugEnabled = false,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = false,
+    .scheduler_debugEnable = true,
 
     // scheduler data
     .ioWriteTaskCount = 0,
@@ -143,6 +144,7 @@ void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
 // helpers
+void UpdateGPS();
 String TaskStateToString(eTaskState state);
 
 /*
@@ -205,7 +207,7 @@ void setup()
   }
   else
   {
-    Serial.printf("gps connection init [ failed ]\n");
+    Serial.printf("gps bus init [ failed ]\n");
   }
   // -------------------------------------------------------------------------- //
 
@@ -214,6 +216,7 @@ void setup()
   tft.setRotation(3);
   tft.fillScreen(TFT_BLACK);
 
+  setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
@@ -252,25 +255,25 @@ void setup()
   Serial.printf("\ntask setup status:\n");
   Serial.printf("i/o task setup: %s\n", setup.ioActive ? "complete" : "failed");
   Serial.printf("i2c task setup: %s\n", setup.i2cActive ? "complete" : "failed");
-  Serial.printf("display task setuo %s\n", setup.displayActive ? "complete" : "failed");
+  Serial.printf("display task setup %s\n", setup.displayActive ? "complete" : "failed");
 
   // start tasks
   if (xMutex != NULL)
   {
     if (setup.ioActive)
     {
-      xTaskCreatePinnedToCore(IOReadTask, "read-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead, 0);
-      xTaskCreatePinnedToCore(IOWriteTask, "write-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite, 0);
+      xTaskCreate(IOReadTask, "read-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead);
+      xTaskCreate(IOWriteTask, "write-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite);
     }
 
     if (setup.i2cActive)
     {
-      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleI2C, 1);
+      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleI2C);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDisplay, 1);
+      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDisplay);
     }
 
     if (debugger.debugEnabled == true)
@@ -409,6 +412,18 @@ void I2CTask(void *pvParameters)
     {
 
       // read i2c bus for gps data
+      // if a sentence is received, we can check the checksum, parse it...
+      if (gps.newNMEAreceived())
+      {
+        // a tricky thing here is if we print the NMEA sentence, or data
+        // we end up not listening and catching other sentences!
+        // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+        // Serial.println(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+        gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+
+        // update gps data
+        UpdateGPS();
+      }
 
       // debugging
       if (debugger.debugEnabled)
@@ -446,130 +461,155 @@ void DisplayTask(void *pvParameters)
       }
 
       // check connection
-      if (data.connected)
+      // if (data.connected)
+      // {
+      // display gps information
+      tft.setTextSize(3);
+      tft.setTextColor(TFT_RED);
+      tft.setCursor(0, 0);
+      tft.printf("mini-gps:");
+
+      // outline boxes
+      tft.drawRect(0, 25, 320, 155, TFT_DARKCYAN);
+      tft.drawRect(0, 185, 320, 55, TFT_MAGENTA);
+
+      // set info font size and color
+      tft.setTextSize(2);
+      tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
+
+      // location data
+      if (data.numSats >= 4)
       {
-        // display gps information
-        tft.setTextSize(3);
-        tft.setTextColor(TFT_RED);
-        tft.setCursor(0, 0);
-        tft.printf("gps data:");
+        tft.setCursor(5, 30);
+        tft.printf("latitude: %f", data.latitude);
 
-        // outline boxes
-        tft.drawRect(0, 25, 320, 150, TFT_DARKCYAN);
-        tft.drawRect(0, 185, 320, 55, TFT_MAGENTA);
+        tft.setCursor(5, 50);
+        tft.printf("longitude: %f", data.longitude);
 
-        // set info font size and color
-        tft.setTextSize(2);
-        tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
-
-        // location data
-        if (data.numSats >= 4)
-        {
-          tft.setCursor(5, 30);
-          tft.printf("latitude: %f", data.latitude);
-
-          tft.setCursor(5, 50);
-          tft.printf("longitude: %f", data.longitude);
-
-          tft.setCursor(5, 70);
-          tft.printf("altitude: %f", data.altitude);
-        }
-        else
-        {
-          tft.setCursor(5, 30);
-          tft.printf("latitude:  ---.---     ");
-
-          tft.setCursor(5, 50);
-          tft.printf("longitude: ---.---     ");
-
-          tft.setCursor(5, 70);
-          tft.printf("altitude:  ---.---     ");
-        }
-
-        // speed data
-        tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
-        tft.setCursor(5, 100);
-        if (data.numSats >= 4)
-        {
-          tft.printf("speed (mph): %.1f ", data.speed);
-        }
-        else
-        {
-          tft.printf("speed (mph): ---", data.speed);
-        }
-
-        // date
-        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-        tft.setCursor(5, 130);
-        tft.printf("date: %d / %d / %d    ", data.year, data.month, data.day);
-
-        // time
-        tft.setCursor(5, 150);
-        tft.printf("time: %d:%d:%d (UTC)       ", data.hour, data.minute, data.second);
-
-        // connection data
-        tft.setCursor(5, 190);
-        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-        tft.printf("# satellites: %d ", data.numSats);
-
-        // replace with connection type gps vs dgps and also time since last fix and so on!!!
-
-        // time and date downlink status
-        tft.setCursor(10, 220);
-        if (data.numSats > 0)
-        {
-          tft.setTextColor(TFT_WHITE, TFT_GREEN, true);
-        }
-        else
-        {
-          tft.setTextColor(TFT_WHITE, TFT_RED, true);
-        }
-        tft.printf("time data");
-
-        // location downlink status
-        tft.setCursor(150, 220);
-        if (data.numSats > 3)
-        {
-          tft.setTextColor(TFT_WHITE, TFT_GREEN, true);
-        }
-        else
-        {
-          tft.setTextColor(TFT_WHITE, TFT_RED, true);
-        }
-        tft.printf("location data");
+        tft.setCursor(5, 70);
+        tft.printf("altitude: %f", data.altitude);
       }
-
-      // no connection and no valid rtc data
       else
       {
-        // flash a circle top left as activity indicator
-        if (refreshCounter <= REFRESH_DELAY)
-        {
-          tft.fillCircle(10, 10, 10, TFT_GREEN);
-        }
-        if (refreshCounter >= REFRESH_DELAY)
-        {
-          tft.fillCircle(10, 10, 10, TFT_BLACK);
-        }
-        if (refreshCounter >= (REFRESH_DELAY * 2))
-        {
-          refreshCounter = 0;
-        }
-        refreshCounter++;
+        tft.setCursor(5, 30);
+        tft.printf("latitude:  ---.---     ");
 
-        // text for status indicator
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        tft.setCursor(30, 5);
-        tft.printf("searching...");
+        tft.setCursor(5, 50);
+        tft.printf("longitude: ---.---     ");
 
-        // general info
-        tft.setTextSize(2);
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        tft.setCursor(80, 110);
-        tft.printf("< no signal >");
-        tft.setCursor(40, 130);
-        tft.printf("< rtc data invalid >");
+        tft.setCursor(5, 70);
+        tft.printf("altitude:  ---.---     ");
       }
+
+      // speed data
+      tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
+      tft.setCursor(5, 95);
+      if (data.numSats >= 4)
+      {
+        tft.printf("speed (mph): %.1f ", data.speed);
+      }
+      else
+      {
+        tft.printf("speed (mph): ---", data.speed);
+      }
+
+      // angle data
+      tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
+      tft.setCursor(5, 115);
+      if (data.speed > 1.0)
+      {
+        tft.printf("heading: %.1f ", data.angle);
+      }
+      else
+      {
+        tft.printf("heading: ---", data.angle);
+      }
+
+      // date
+      tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+      tft.setCursor(5, 140);
+      tft.printf("date: %d / %d / %d    ", data.year, data.month, data.day);
+
+      // time
+      tft.setCursor(5, 160);
+      tft.printf("time: %d:%d:%d (UTC)       ", data.hour, data.minute, data.second);
+
+      // sat data
+      tft.setCursor(5, 190);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
+      tft.printf("# sats: ");
+
+      if (data.numSats == 0)
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+      if (data.numSats > 0 && data.numSats <= 3)
+        tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
+      if (data.numSats >= 3)
+        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+
+      tft.printf("%d ", data.numSats);
+
+      // connection type
+      tft.setCursor(130, 190);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
+      tft.printf("status: ");
+      switch (data.fixQuality)
+      {
+      case 0:
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+        tft.printf("NO CONN");
+        break;
+
+      case 1:
+        tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
+        tft.printf("GPS    ");
+        break;
+
+      case 2:
+        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+        tft.printf("D-GPS  ");
+        break;
+
+      default:
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+        tft.printf("uh-oh  ");
+        break;
+      }
+
+      // replace with connection type gps vs dgps and also time since last fix and so on!!!
+
+      // }
+
+      // // no connection and no valid rtc data
+      // else
+      // {
+      //   // flash a circle top left as activity indicator
+      //   if (refreshCounter <= REFRESH_DELAY)
+      //   {
+      //     tft.fillCircle(10, 10, 10, TFT_GREEN);
+      //   }
+      //   if (refreshCounter >= REFRESH_DELAY)
+      //   {
+      //     tft.fillCircle(10, 10, 10, TFT_BLACK);
+      //   }
+      //   if (refreshCounter >= (REFRESH_DELAY * 2))
+      //   {
+      //     refreshCounter = 0;
+      //   }
+      //   refreshCounter++;
+
+      //   // text for status indicator
+      //   tft.setTextColor(TFT_RED, TFT_BLACK, true);
+      //   tft.setCursor(30, 5);
+      //   tft.printf("searching...");
+
+      //   // general info
+      //   tft.setTextSize(2);
+      //   tft.setTextColor(TFT_RED, TFT_BLACK, true);
+      //   tft.setCursor(80, 110);
+      //   tft.printf("< no signal >");
+      //   tft.setCursor(40, 130);
+      //   tft.printf("< rtc data invalid >");
+      // }
 
       // debugging
       if (debugger.debugEnabled)
@@ -658,9 +698,11 @@ void UpdateGPS()
 
     // parse data
     if (gps.parse(gps.lastNMEA())) // this also sets the newNMEAreceived() flag to false, we can fail to parse a sentence in which case we should just wait for another
-    {                              // connection data
+    {
+      // connection data
       data.connected = gps.fix;
       data.fixQuality = gps.fixquality;
+
       data.numSats = gps.satellites;
       data.dtLastFix = gps.secondsSinceFix();
       data.dtSinceTime = gps.secondsSinceTime();
@@ -673,6 +715,11 @@ void UpdateGPS()
 
       // collect speed data
       data.speed = gps.speed;
+      if (data.speed < 1.0) // no need for like 0.3 mph of speed
+        data.speed = 0;
+
+      // collect angle data, current heading
+      data.angle = gps.angle;
 
       // collect date data
       data.year = gps.year;
@@ -799,9 +846,9 @@ void PrintSchedulerDebug()
   }
 
   // print
-  Serial.printf("uptime: %d | read io:<%d Hz> (%d) | write io:<%d Hz> (%d) | i2c:<%d Hz> (%d) | display:<%d Hz> (%d) \r",
-                uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount,
-                taskRefreshRate.at(2), debugger.i2cTaskCount, taskRefreshRate.at(3), debugger.displayTaskCount, taskRefreshRate.at(5));
+  Serial.printf("uptime: %d | read io: <%d Hz> (%d) | write io: <%d Hz> (%d) | i2c: <%d Hz> (%d) | display: <%d Hz> (%d) \r",
+                uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(2),
+                debugger.i2cTaskCount, taskRefreshRate.at(3), debugger.displayTaskCount);
 
   // update counters
   debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;

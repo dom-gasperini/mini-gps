@@ -2,8 +2,8 @@
  * @file pin_config.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 1.0
- * @date 2024-05-06
+ * @version 2.0
+ * @date 2024-06-04
  */
 
 /*
@@ -21,8 +21,8 @@
 */
 
 esp_pm_config_esp32_t power_configuration{
-    .max_freq_mhz = 80,
-    .min_freq_mhz = 80,
+    .max_freq_mhz = 240,
+    .min_freq_mhz = 240,
     .light_sleep_enable = false,
 };
 
@@ -33,7 +33,7 @@ esp_pm_config_esp32_t power_configuration{
 */
 
 // inputs
-#define SLEEP_BUTTON_PIN 18
+// #define SLEEP_BUTTON_PIN 18
 
 // ic2
 #define I2C_RX_PIN 18

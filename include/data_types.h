@@ -2,8 +2,8 @@
  * @file data_types.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 1.0
- * @date 2024-06-02
+ * @version 2.0
+ * @date 2024-06-08
  */
 
 /*
@@ -41,11 +41,12 @@ typedef struct Data
     float dtSinceDate;
     float dtSinceTime;
 
-    double latitude;
-    double longitude;
-    double altitude;
+    float latitude;
+    float longitude;
+    float altitude;
 
-    double speed;
+    float speed;
+    float angle;
 
     int year;
     int month;
