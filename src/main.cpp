@@ -821,6 +821,12 @@ void PrintI2CDebug()
 {
   Serial.printf("\n--- start i2c debug ---\n");
 
+  Serial.printf("fix: %s\n", data.connected ? "yes" : "no");
+  Serial.printf("# sats: %d\n", data.numSats);
+
+  Serial.printf("time: %d:%d:%d\n", data.hour, data.minute, data.second);
+  Serial.printf("date: %d-%d-%d\n", data.year, data.month, data.day);
+
   Serial.printf("lat: %f\n", data.latitude);
   Serial.printf("long: %f\n", data.longitude);
   Serial.printf("alt: %f\n", data.altitude);
