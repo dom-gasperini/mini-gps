@@ -93,9 +93,9 @@ Data data = {
 Debugger debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
-    .i2c_debugEnabled = false,
+    .i2c_debugEnabled = true,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = true,
+    .scheduler_debugEnable = false,
 
     // scheduler data
     .ioWriteTaskCount = 0,
@@ -820,6 +820,10 @@ void PrintIODebug()
 void PrintI2CDebug()
 {
   Serial.printf("\n--- start i2c debug ---\n");
+
+  Serial.printf("lat: %f\n", data.latitude);
+  Serial.printf("long: %f\n", data.longitude);
+  Serial.printf("alt: %f\n", data.altitude);
 
   Serial.printf("\n--- end i2c debug ---\n");
 }
