@@ -36,8 +36,8 @@ esp_pm_config_esp32_t power_configuration{
 // #define SLEEP_BUTTON_PIN 18
 
 // ic2
-#define I2C_RX_PIN 18
-#define I2C_TX_PIN 19
+#define I2C_SCL_PIN 19
+#define I2C_SDA_PIN 18
 
 // display
 // #define TFT_SCK 27

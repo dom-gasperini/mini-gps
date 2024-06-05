@@ -72,6 +72,9 @@ typedef struct Debugger
     bool display_debugEnabled;
     bool scheduler_debugEnable;
 
+    // display debugging
+    String debugText;
+
     // scheduler data
     unsigned long ioWriteTaskCount;
     unsigned long ioReadTaskCount;

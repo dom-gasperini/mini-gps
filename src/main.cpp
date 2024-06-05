@@ -97,6 +97,8 @@ Debugger debugger = {
     .display_debugEnabled = false,
     .scheduler_debugEnable = false,
 
+    .debugText = "",
+
     // scheduler data
     .ioWriteTaskCount = 0,
     .ioReadTaskCount = 0,
@@ -109,8 +111,11 @@ Debugger debugger = {
     .displayTaskPreviousCount = 0,
 };
 
+// i2c
+TwoWire I2CGPS = TwoWire(0);
+
 // gps
-Adafruit_GPS gps(&Wire);
+Adafruit_GPS gps(&I2CGPS);
 
 // display
 TFT_eSPI tft = TFT_eSPI();
@@ -189,25 +194,14 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // ----------------------- initialize I2C connection --------------------- //
-  if (Wire.begin(I2C_RX_PIN, I2C_TX_PIN, I2C_FREQUENCY) == true)
+  if (I2CGPS.begin(I2C_SCL_PIN, I2C_SDA_PIN) == true)
   {
-    Wire.setBufferSize(255);
-
-    // test for telemetry connection
-    Wire.beginTransmission(I2C_GPS_ADDR);
-    if (Wire.endTransmission() == 0)
-    {
-      Serial.printf("gps connection init [ success ]\n");
-      setup.i2cActive = true;
-    }
-    else
-    {
-      Serial.printf("gps connection init [ failed ]\n");
-    }
+    Serial.printf("i2c bus init [ success ]\n");
+    setup.i2cActive = true;
   }
   else
   {
-    Serial.printf("gps bus init [ failed ]\n");
+    Serial.printf("i2c bus init [ failed ]\n");
   }
   // -------------------------------------------------------------------------- //
 
@@ -222,7 +216,7 @@ void setup()
 
   // -------------------------- initialize gps -------------------------------- //
   // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
-  gps.begin(0x10); // The I2C address to use is 0x10
+  gps.begin(I2C_GPS_ADDR); // The I2C address to use is 0x10
   // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
   gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
   // uncomment this line to turn on only the "minimum recommended" data
@@ -821,6 +815,24 @@ void PrintI2CDebug()
 {
   Serial.printf("\n--- start i2c debug ---\n");
 
+  debugger.debugText = "";
+  for (int i = 0; i < 50; ++i)
+  {
+    if (Serial.available())
+    {
+      char c = Serial.read();
+      gps.write(c);
+    }
+    if (gps.available())
+    {
+      char c = gps.read();
+      Serial.write(c);
+
+      debugger.debugText.concat(c);
+    }
+  }
+  Serial.printf("\n\n");
+
   Serial.printf("fix: %s\n", data.connected ? "yes" : "no");
   Serial.printf("# sats: %d\n", data.numSats);
 
@@ -837,6 +849,12 @@ void PrintI2CDebug()
 void PrintDisplayDebug()
 {
   Serial.printf("\n--- start display debug ---\n");
+
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(0, 0);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+  tft.printf("%s", debugger.debugText.c_str());
 
   Serial.printf("\n--- end display debug ---\n");
 }
