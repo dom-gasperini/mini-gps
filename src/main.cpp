@@ -47,11 +47,11 @@
 #define GPS_BAUD 9600
 
 // tasks
-#define IO_WRITE_REFRESH_RATE 100 // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define IO_READ_REFRESH_RATE 100  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 100      // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 100  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000   // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 10        // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 10    // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 20000 // in bytes
 
@@ -93,9 +93,9 @@ Data data = {
 Debugger debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
-    .i2c_debugEnabled = true,
+    .i2c_debugEnabled = false,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = false,
+    .scheduler_debugEnable = true,
 
     .debugText = "",
 
@@ -104,6 +104,8 @@ Debugger debugger = {
     .ioReadTaskCount = 0,
     .i2cTaskCount = 0,
     .displayTaskCount = 0,
+
+    .displayRefreshRate = 0,
 
     .ioReadTaskPreviousCount = 0,
     .ioWriteTaskPreviousCount = 0,
@@ -149,7 +151,6 @@ void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
 // helpers
-void UpdateGPS();
 String TaskStateToString(eTaskState state);
 
 /*
@@ -262,12 +263,12 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleI2C);
+      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 8, &xHandleI2C);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDisplay);
+      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 16, &xHandleDisplay);
     }
 
     if (debugger.debugEnabled == true)
@@ -404,19 +405,51 @@ void I2CTask(void *pvParameters)
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-
-      // read i2c bus for gps data
-      // if a sentence is received, we can check the checksum, parse it...
-      if (gps.newNMEAreceived())
+      // read gps data
+      if (gps.read())
       {
-        // a tricky thing here is if we print the NMEA sentence, or data
-        // we end up not listening and catching other sentences!
-        // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-        // Serial.println(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-        gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+        // read i2c bus for gps data
+        // if a sentence is received, we can check the checksum, parse it...
+        if (gps.newNMEAreceived())
+        {
+          // a tricky thing here is if we print the NMEA sentence, or data
+          // we end up not listening and catching other sentences!
+          // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+          // Serial.println(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+          gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
 
-        // update gps data
-        UpdateGPS();
+          // connection data
+          data.connected = gps.fix;
+          data.fixQuality = gps.fixquality;
+
+          data.numSats = gps.satellites;
+          data.dtLastFix = gps.secondsSinceFix();
+          data.dtSinceTime = gps.secondsSinceTime();
+          data.dtSinceTime = gps.secondsSinceDate();
+
+          // collect location data
+          data.latitude = gps.latitude / 100;
+          data.longitude = gps.longitude / 100;
+          data.altitude = gps.altitude;
+
+          // collect speed data
+          data.speed = gps.speed;
+          if (data.speed < 1.0) // no need for like 0.3 mph of speed
+            data.speed = 0;
+
+          // collect angle data, current heading
+          data.angle = gps.angle;
+
+          // collect date data
+          data.year = gps.year + 2000;
+          data.month = gps.month;
+          data.day = gps.day;
+
+          // collect time data
+          data.hour = gps.hour;
+          data.minute = gps.minute;
+          data.second = gps.seconds;
+        }
       }
 
       // debugging
@@ -496,7 +529,7 @@ void DisplayTask(void *pvParameters)
           tft.printf("longitude: %f", data.longitude);
 
           tft.setCursor(5, 70);
-          tft.printf("altitude: %f", data.altitude);
+          tft.printf("altitude: %.1fm   ", data.altitude);
         }
         else
         {
@@ -531,7 +564,7 @@ void DisplayTask(void *pvParameters)
         }
         else
         {
-          tft.printf("heading: ---", data.angle);
+          tft.printf("heading: ---  ", data.angle);
         }
 
         // date
@@ -634,8 +667,15 @@ void DisplayTask(void *pvParameters)
       // debugging
       if (debugger.debugEnabled)
       {
-        // debugger.IO_data = tractiveCoreData;
         debugger.displayTaskCount++;
+
+        if (debugger.display_debugEnabled)
+        {
+          tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+          tft.setTextSize(2);
+          tft.setCursor(300, 0);
+          tft.printf("%d", debugger.displayRefreshRate);
+        }
       }
 
       // release mutex!
@@ -693,65 +733,6 @@ void loop()
 {
   // everything is managed by RTOS, so nothing really happens here!
   vTaskDelay(1); // prevent watchdog from getting upsets
-}
-
-/*
-===============================================================================================
-                                      functions
-===============================================================================================
-*/
-
-/**
- *  @brief read and update gps data
- */
-void UpdateGPS()
-{
-  char c = gps.read();
-
-  // if a sentence is received, we can check the checksum, parse it...
-  if (gps.newNMEAreceived())
-  {
-    // a tricky thing here is if we print the NMEA sentence, or data
-    // we end up not listening and catching other sentences!
-    // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-    gps.lastNMEA(); // this also sets the newNMEAreceived() flag to false
-
-    // parse data
-    if (gps.parse(gps.lastNMEA())) // this also sets the newNMEAreceived() flag to false, we can fail to parse a sentence in which case we should just wait for another
-    {
-      // connection data
-      data.connected = gps.fix;
-      data.fixQuality = gps.fixquality;
-
-      data.numSats = gps.satellites;
-      data.dtLastFix = gps.secondsSinceFix();
-      data.dtSinceTime = gps.secondsSinceTime();
-      data.dtSinceTime = gps.secondsSinceDate();
-
-      // collect location data
-      data.latitude = gps.latitude;
-      data.longitude = gps.longitude;
-      data.altitude = gps.altitude;
-
-      // collect speed data
-      data.speed = gps.speed;
-      if (data.speed < 1.0) // no need for like 0.3 mph of speed
-        data.speed = 0;
-
-      // collect angle data, current heading
-      data.angle = gps.angle;
-
-      // collect date data
-      data.year = gps.year;
-      data.month = gps.month;
-      data.day = gps.day;
-
-      // collect time data
-      data.hour = gps.hour;
-      data.minute = gps.minute;
-      data.second = gps.seconds;
-    }
-  }
 }
 
 /*
@@ -833,15 +814,15 @@ void PrintI2CDebug()
   }
   Serial.printf("\n\n");
 
-  Serial.printf("fix: %s\n", data.connected ? "yes" : "no");
-  Serial.printf("# sats: %d\n", data.numSats);
+  Serial.printf("fix: %s\n", gps.fix ? "yes" : "no");
+  Serial.printf("# sats: %d\n", gps.satellites);
 
-  Serial.printf("time: %d:%d:%d\n", data.hour, data.minute, data.second);
-  Serial.printf("date: %d-%d-%d\n", data.year, data.month, data.day);
+  Serial.printf("time: %d:%d:%d\n", gps.hour, gps.minute, gps.seconds);
+  Serial.printf("date: %d-%d-%d\n", gps.year, gps.month, gps.day);
 
-  Serial.printf("lat: %f\n", data.latitude);
-  Serial.printf("long: %f\n", data.longitude);
-  Serial.printf("alt: %f\n", data.altitude);
+  Serial.printf("lat: %f\n", gps.latitude);
+  Serial.printf("long: %f\n", gps.longitude);
+  Serial.printf("alt: %f\n", gps.altitude);
 
   Serial.printf("\n--- end i2c debug ---\n");
 }
@@ -892,6 +873,8 @@ void PrintSchedulerDebug()
   taskRefreshRate.push_back(debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount);
   taskRefreshRate.push_back(debugger.i2cTaskCount - debugger.i2cTaskPreviousCount);
   taskRefreshRate.push_back(debugger.displayTaskCount - debugger.displayTaskPreviousCount);
+
+  debugger.displayRefreshRate = (int)debugger.displayTaskCount - (int)debugger.displayTaskPreviousCount;
 
   // make it usable
   for (int i = 0; i < taskStates.size() - 1; ++i)

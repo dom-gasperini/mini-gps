@@ -81,6 +81,8 @@ typedef struct Debugger
     unsigned long i2cTaskCount;
     unsigned long displayTaskCount;
 
+    int displayRefreshRate;
+
     unsigned long ioReadTaskPreviousCount;
     unsigned long ioWriteTaskPreviousCount;
     unsigned long i2cTaskPreviousCount;
