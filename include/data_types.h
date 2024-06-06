@@ -55,6 +55,7 @@ typedef struct Data
     int hour;
     int minute;
     int second;
+    int clockCounter;
 
     int numSats;
 } Data;

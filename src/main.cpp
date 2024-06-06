@@ -93,9 +93,9 @@ Data data = {
 Debugger debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
-    .i2c_debugEnabled = false,
+    .i2c_debugEnabled = true,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = true,
+    .scheduler_debugEnable = false,
 
     .debugText = "",
 
@@ -152,6 +152,7 @@ void DebugTask(void *pvParameters);
 
 // helpers
 String TaskStateToString(eTaskState state);
+bool ValidTime();
 
 /*
 ===============================================================================================
@@ -263,7 +264,7 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 8, &xHandleI2C);
+      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 16, &xHandleI2C);
     }
 
     if (setup.displayActive)
@@ -488,7 +489,7 @@ void DisplayTask(void *pvParameters)
       }
 
       // check connection
-      if (data.connected)
+      if (data.connected || ValidTime())
       {
         // display gps information
         tft.setTextSize(3);
@@ -579,7 +580,7 @@ void DisplayTask(void *pvParameters)
         // sat data
         tft.setCursor(5, 190);
         tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-        tft.printf("# sats: ");
+        tft.printf("sats: ");
 
         if (data.numSats == 0)
           tft.setTextColor(TFT_RED, TFT_BLACK, true);
@@ -621,15 +622,27 @@ void DisplayTask(void *pvParameters)
         tft.setCursor(5, 220);
         tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
         tft.printf("dt-fix: ");
-        if (data.dtLastFix < 3.0)
+        if (data.dtLastFix < 3.0 && data.dtLastFix < 0)
         {
           tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+        }
+        else if (data.dtLastFix > 6000) // no fix!
+        {
+          tft.setTextColor(TFT_RED, TFT_BLACK, true);
         }
         else
         {
           tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
         }
-        tft.printf("%.1f seconds  ", data.dtLastFix);
+
+        if (data.dtLastFix > 6000)
+        {
+          tft.printf("unreliable data", data.dtLastFix);
+        }
+        else
+        {
+          tft.printf("%.1f seconds   ", data.dtLastFix);
+        }
       }
 
       // no connection
@@ -774,6 +787,35 @@ String TaskStateToString(eTaskState state)
   }
 
   return stateStr;
+}
+
+/**
+ *
+ */
+bool ValidTime()
+{
+  // inits
+  bool valid = true;
+  int cutoff = 30;
+
+  if (data.hour == 0 && data.minute == 0 && data.second == 0)
+  {
+    data.clockCounter++;
+
+    if (data.clockCounter >= cutoff)
+    {
+      valid = false;
+    }
+  }
+  else
+  {
+    if (data.clockCounter > 0)
+    {
+      data.clockCounter = 0;
+    }
+  }
+
+  return valid;
 }
 
 /*
