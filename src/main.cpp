@@ -50,13 +50,13 @@
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define I2C_REFRESH_RATE 200       // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 10    // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 5    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 20000 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING true
+#define ENABLE_DEBUGGING false
 
 /*
 ===============================================================================================
@@ -220,18 +220,16 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
   gps.begin(I2C_GPS_ADDR); // The I2C address to use is 0x10
+
   // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
   gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+
   // uncomment this line to turn on only the "minimum recommended" data
   // GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
   // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
-  // the parser doesn't care about other sentences at this time
-  // Set the update rate
-  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ); // 1 Hz update rate
-  // For the parsing code to work nicely and have time to sort thru the data, and
-  // print it out we don't suggest using anything higher than 1 Hz
+
+  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
 
   // Request updates on antenna status, comment out to keep quiet
   // gps.sendCommand(PGCMD_ANTENNA);
