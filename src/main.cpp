@@ -56,7 +56,7 @@
 #define TASK_STACK_SIZE 20000 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING true
+#define ENABLE_DEBUGGING false
 
 /*
 ===============================================================================================
@@ -67,6 +67,8 @@
 Data data = {
     .connected = false,
     .wasConnected = false,
+    .validTime = false,
+    .wasValidTime = false,
     .fixQuality = 0,
     .dtLastFix = 0.0f,
     .dtSinceDate = 0.0f,
@@ -86,6 +88,7 @@ Data data = {
     .hour = 0,
     .minute = 0,
     .second = 0,
+    .timeout = 0,
 
     .numSats = 0,
 };
@@ -93,9 +96,9 @@ Data data = {
 Debugger debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
-    .i2c_debugEnabled = true,
+    .i2c_debugEnabled = false,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = false,
+    .scheduler_debugEnable = true,
 
     .debugText = "",
 
@@ -406,62 +409,66 @@ void I2CTask(void *pvParameters)
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-      // read gps data
-      if (gps.read())
+      if (gps.available())
       {
-        // read i2c bus for gps data
-        // if a sentence is received, we can check the checksum, parse it...
-        if (gps.newNMEAreceived())
+        // read gps data
+        if (gps.read())
         {
-          // a tricky thing here is if we print the NMEA sentence, or data
-          // we end up not listening and catching other sentences!
-          // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-          // Serial.println(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-          gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+          // read i2c bus for gps data
+          // if a sentence is received, we can check the checksum, parse it...
+          if (gps.newNMEAreceived())
+          {
+            // a tricky thing here is if we print the NMEA sentence, or data
+            // we end up not listening and catching other sentences!
+            // so be very wary if using OUTPUT_ALLDATA and trying to print out data
+            // Serial.println(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+            gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
 
-          // connection data
-          data.connected = gps.fix;
-          data.fixQuality = gps.fixquality;
+            // connection data
+            data.connected = gps.fix;
+            data.fixQuality = gps.fixquality;
 
-          data.numSats = gps.satellites;
-          data.dtLastFix = gps.secondsSinceFix();
-          data.dtSinceTime = gps.secondsSinceTime();
-          data.dtSinceTime = gps.secondsSinceDate();
+            data.numSats = gps.satellites;
+            data.dtLastFix = gps.secondsSinceFix();
+            data.dtSinceTime = gps.secondsSinceTime();
+            data.dtSinceTime = gps.secondsSinceDate();
 
-          // collect location data
-          data.latitude = gps.latitude / 100;
-          data.longitude = gps.longitude / 100;
-          data.altitude = gps.altitude;
+            // collect location data
+            data.latitude = gps.latitude / 100;
+            data.longitude = gps.longitude / 100;
+            data.altitude = gps.altitude;
 
-          // collect speed data
-          data.speed = gps.speed;
-          if (data.speed < 1.0) // no need for like 0.3 mph of speed
-            data.speed = 0;
+            // collect speed data
+            data.speed = gps.speed;
+            if (data.speed < 1.0) // no need for like 0.3 mph of speed
+              data.speed = 0;
 
-          // collect angle data, current heading
-          data.angle = gps.angle;
+            // collect angle data, current heading
+            data.angle = gps.angle;
 
-          // collect date data
-          data.year = gps.year + 2000;
-          data.month = gps.month;
-          data.day = gps.day;
+            // collect date data
+            data.year = gps.year + 2000;
+            data.month = gps.month;
+            data.day = gps.day;
 
-          // collect time data
-          data.hour = gps.hour;
-          data.minute = gps.minute;
-          data.second = gps.seconds;
+            // collect time data
+            data.hour = gps.hour;
+            data.minute = gps.minute;
+            data.second = gps.seconds;
+
+            data.validTime = ValidTime();
+          }
         }
-      }
 
-      // debugging
-      if (debugger.debugEnabled)
-      {
-        // debugger.IO_data = tractiveCoreData;
-        debugger.i2cTaskCount++;
-      }
+        // debugging
+        if (debugger.debugEnabled)
+        {
+          debugger.i2cTaskCount++;
+        }
 
-      // release mutex!
-      xSemaphoreGive(xMutex);
+        // release mutex!
+        xSemaphoreGive(xMutex);
+      }
     }
 
     // limit task refresh rate
@@ -480,16 +487,16 @@ void DisplayTask(void *pvParameters)
     // check for mutex availability
     if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-
       // clear screen on state change
-      if ((data.wasConnected != data.connected))
+      if (data.wasConnected != data.connected || data.wasValidTime != data.validTime)
       {
         data.wasConnected = data.connected;
+        data.wasValidTime = data.validTime;
         tft.fillScreen(TFT_BLACK);
       }
 
       // check connection
-      if (data.connected || ValidTime())
+      if (data.connected || data.validTime)
       {
         // display gps information
         tft.setTextSize(3);
@@ -796,22 +803,25 @@ bool ValidTime()
 {
   // inits
   bool valid = true;
-  int cutoff = 30;
+  int cutoff = 600; // in seconds
 
   if (data.hour == 0 && data.minute == 0 && data.second == 0)
   {
-    data.clockCounter++;
-
-    if (data.clockCounter >= cutoff)
+    if (data.timeout >= esp_rtc_get_time_us())
     {
       valid = false;
+    }
+    if (data.timeout == 0)
+    {
+      data.timeout = esp_rtc_get_time_us() + (cutoff * 1000000); // to microseconds
     }
   }
   else
   {
-    if (data.clockCounter > 0)
+    if (data.timeout > 0)
     {
-      data.clockCounter = 0;
+      data.timeout = 0;
+      data.timeout = 0;
     }
   }
 
@@ -839,7 +849,7 @@ void PrintI2CDebug()
   Serial.printf("\n--- start i2c debug ---\n");
 
   debugger.debugText = "";
-  for (int i = 0; i < 50; ++i)
+  for (int i = 0; i < 100; ++i)
   {
     if (Serial.available())
     {
