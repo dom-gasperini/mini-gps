@@ -57,7 +57,7 @@ typedef struct Data
     int hour;
     int minute;
     int second;
-    int timeout;
+    long timeout;
 
     int numSats;
 } Data;

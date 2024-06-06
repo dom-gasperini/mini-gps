@@ -49,11 +49,11 @@
 // tasks
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 200       // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 5    // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 250       // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 200   // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
-#define TASK_STACK_SIZE 20000 // in bytes
+#define TASK_STACK_SIZE 2048 // in bytes
 
 // debugging
 #define ENABLE_DEBUGGING false
@@ -265,12 +265,12 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleI2C);
+      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleI2C, 0);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 32, &xHandleDisplay);
+      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 4, &xHandleDisplay, 1);
     }
 
     if (debugger.debugEnabled == true)
@@ -430,13 +430,13 @@ void I2CTask(void *pvParameters)
           data.dtSinceTime = gps.secondsSinceDate();
 
           // collect location data
-          data.latitude = gps.latitude / 100;
-          data.longitude = gps.longitude / 100;
+          data.latitude = gps.latitudeDegrees;
+          data.longitude = gps.longitudeDegrees;
           data.altitude = gps.altitude;
 
           // collect speed data
-          data.speed = gps.speed;
-          if (data.speed < 1.0) // no need for like 0.3 mph of speed
+          data.speed = gps.speed * 1.1507795; // speed is given in knots, convert to mph
+          if (data.speed < 1.0)               // no need for like 0.3 mph of speed
             data.speed = 0;
 
           // collect angle data, current heading
@@ -577,7 +577,7 @@ void DisplayTask(void *pvParameters)
 
         // time
         tft.setCursor(5, 160);
-        tft.printf("time: %d:%d:%d (UTC)       ", data.hour, data.minute, data.second);
+        tft.printf("time: %d:%d:%d (UTC)      ", data.hour, data.minute, data.second);
 
         // sat data
         tft.setCursor(5, 190);
@@ -624,7 +624,7 @@ void DisplayTask(void *pvParameters)
         tft.setCursor(5, 220);
         tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
         tft.printf("dt-fix: ");
-        if (data.dtLastFix < 3.0 && data.dtLastFix < 0)
+        if (data.dtLastFix < 3.0 && data.dtLastFix > 0)
         {
           tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
         }
@@ -643,7 +643,7 @@ void DisplayTask(void *pvParameters)
         }
         else
         {
-          tft.printf("%.1f seconds   ", data.dtLastFix);
+          tft.printf("%.1f seconds    ", data.dtLastFix);
         }
       }
 
@@ -798,26 +798,23 @@ bool ValidTime()
 {
   // inits
   bool valid = true;
-  int cutoff = 600; // in seconds
+  uint64_t cutoff = 10; // in seconds
 
   if (data.hour == 0 && data.minute == 0 && data.second == 0)
   {
-    if (data.timeout >= esp_rtc_get_time_us())
-    {
-      valid = false;
-    }
     if (data.timeout == 0)
     {
-      data.timeout = esp_rtc_get_time_us() + (cutoff * 1000000); // to microseconds
+      data.timeout = (long)esp_rtc_get_time_us() + (cutoff * 1000000); // to microseconds
+    }
+
+    if (data.timeout <= esp_rtc_get_time_us())
+    {
+      valid = false;
     }
   }
   else
   {
-    if (data.timeout > 0)
-    {
-      data.timeout = 0;
-      data.timeout = 0;
-    }
+    data.timeout = 0;
   }
 
   return valid;
@@ -870,6 +867,12 @@ void PrintI2CDebug()
   Serial.printf("lat: %f\n", gps.latitude);
   Serial.printf("long: %f\n", gps.longitude);
   Serial.printf("alt: %f\n", gps.altitude);
+
+  Serial.printf("dt-fix: %f\n", gps.secondsSinceFix());
+  Serial.printf("dt-time: %f\n", gps.secondsSinceTime());
+  Serial.printf("dt-date: %f\n", gps.secondsSinceDate());
+
+  // Serial.printf("timeout: %ld | clock: %ld\n", data.timeout, (long)esp_rtc_get_time_us());
 
   Serial.printf("\n--- end i2c debug ---\n");
 }
