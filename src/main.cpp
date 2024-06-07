@@ -49,14 +49,14 @@
 // tasks
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 250       // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 200   // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 500       // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 250   // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 2048 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING false
+#define ENABLE_DEBUGGING true
 
 /*
 ===============================================================================================
@@ -270,7 +270,7 @@ void setup()
 
     if (setup.displayActive)
     {
-      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 4, &xHandleDisplay, 1);
+      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 6, &xHandleDisplay, 1);
     }
 
     if (debugger.debugEnabled == true)
