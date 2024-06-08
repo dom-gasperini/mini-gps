@@ -2,8 +2,8 @@
  * @file data_types.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 1.0
- * @date 2024-05-06
+ * @version 2.0
+ * @date 2024-06-08
  */
 
 /*
@@ -36,15 +36,19 @@ typedef struct Data
 {
     bool connected;
     bool wasConnected;
+    bool validTime;
+    bool wasValidTime;
+    uint8_t fixQuality;
+    float dtLastFix;
+    float dtSinceDate;
+    float dtSinceTime;
 
-    bool wasRtcDataValid;
-    bool rtcDataValid;
+    float latitude;
+    float longitude;
+    float altitude;
 
-    double latitude;
-    double longitude;
-    double altitude;
-
-    double speed;
+    float speed;
+    float angle;
 
     int year;
     int month;
@@ -53,6 +57,7 @@ typedef struct Data
     int hour;
     int minute;
     int second;
+    long timeout;
 
     int numSats;
 } Data;
@@ -66,22 +71,30 @@ typedef struct Debugger
     // debug toggle
     bool debugEnabled;
     bool IO_debugEnabled;
-    bool gps_debugEnabled;
+    bool i2c_debugEnabled;
     bool display_debugEnabled;
     bool scheduler_debugEnable;
 
+    // display debugging
+    String debugText;
+
     // scheduler data
-    unsigned long ioTaskCount;
-    unsigned long gpsTaskCount;
+    unsigned long ioWriteTaskCount;
+    unsigned long ioReadTaskCount;
+    unsigned long i2cTaskCount;
     unsigned long displayTaskCount;
 
-    unsigned long ioTaskPreviousCount;
-    unsigned long gpsTaskPreviousCount;
+    int displayRefreshRate;
+
+    unsigned long ioReadTaskPreviousCount;
+    unsigned long ioWriteTaskPreviousCount;
+    unsigned long i2cTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
 } Debugger;
 
 // debug functions
 void PrintDebug();
-void PrintGPSDebug();
+void PrintI2CDebug();
 void PrintIODebug();
+void PrintDisplayDebug();
 void PrintSchedulerDebug();
