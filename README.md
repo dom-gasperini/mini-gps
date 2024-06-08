@@ -1,6 +1,6 @@
 # mini-gps
 
-a mini gps location device with up to 1m of error
+a mini gps location device with up to 1m of precision
 
 ## hardware
 
