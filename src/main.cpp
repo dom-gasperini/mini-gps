@@ -3,7 +3,7 @@
  * @author dom gasperini
  * @brief mini-gps
  * @version 2.0
- * @date 2024-06-04
+ * @date 2024-06-08
  *
  * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espregpsSerialif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
@@ -56,7 +56,7 @@
 #define TASK_STACK_SIZE 2048 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING true
+#define ENABLE_DEBUGGING false
 
 /*
 ===============================================================================================
@@ -355,7 +355,6 @@ void IOReadTask(void *pvParameters)
       // debugging
       if (debugger.debugEnabled)
       {
-        // debugger.IO_data = tractiveCoreData;
         debugger.ioReadTaskCount++;
       }
 
@@ -383,7 +382,6 @@ void IOWriteTask(void *pvParameters)
       // debugging
       if (debugger.debugEnabled)
       {
-        // debugger.IO_data = tractiveCoreData;
         debugger.ioWriteTaskCount++;
       }
 
@@ -436,7 +434,7 @@ void I2CTask(void *pvParameters)
 
           // collect speed data
           data.speed = gps.speed * 1.1507795; // speed is given in knots, convert to mph
-          if (data.speed < 1.0)               // no need for like 0.3 mph of speed
+          if (data.speed < 0.5)               // no need for like 0.1 mph of speed
             data.speed = 0;
 
           // collect angle data, current heading
@@ -523,7 +521,7 @@ void DisplayTask(void *pvParameters)
         tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
 
         // location data
-        if (data.numSats >= 4)
+        if (data.numSats >= 3)
         {
           tft.setCursor(5, 30);
           tft.printf("latitude: %f", data.latitude);
@@ -561,7 +559,7 @@ void DisplayTask(void *pvParameters)
         // angle data
         tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
         tft.setCursor(5, 115);
-        if (data.speed > 1.0)
+        if (data.speed > 0.5)
         {
           tft.printf("heading: %.1f ", data.angle);
         }
@@ -605,12 +603,12 @@ void DisplayTask(void *pvParameters)
           break;
 
         case 1:
-          tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
+          tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
           tft.printf("GPS    ");
           break;
 
         case 2:
-          tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+          tft.setTextColor(TFT_BLUE, TFT_BLACK, true);
           tft.printf("D-GPS  ");
           break;
 
