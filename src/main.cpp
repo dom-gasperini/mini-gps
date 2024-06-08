@@ -265,12 +265,12 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleI2C, 0);
+      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleI2C);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 6, &xHandleDisplay, 1);
+      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay);
     }
 
     if (debugger.debugEnabled == true)
