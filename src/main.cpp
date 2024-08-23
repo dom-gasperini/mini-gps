@@ -49,7 +49,7 @@
 // tasks
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 500       // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 2         // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DISPLAY_REFRESH_RATE 250   // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
@@ -96,7 +96,7 @@ Data data = {
 Debugger debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
-    .i2c_debugEnabled = true,
+    .i2c_debugEnabled = false,
     .display_debugEnabled = false,
     .scheduler_debugEnable = true,
 
@@ -195,7 +195,7 @@ void setup()
   // outputs
 
   Serial.printf("GPIO INIT [ SUCCESS ]\n");
-  setup.ioActive = true;
+  setup.ioActive = false;
   // -------------------------------------------------------------------------- //
 
   // ----------------------- initialize I2C connection --------------------- //
@@ -265,12 +265,12 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleI2C);
+      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 4, &xHandleI2C);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay);
+      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDisplay);
     }
 
     if (debugger.debugEnabled == true)
@@ -463,10 +463,10 @@ void I2CTask(void *pvParameters)
       // release mutex!
       xSemaphoreGive(xMutex);
     }
-  }
 
-  // limit task refresh rate
-  vTaskDelay(I2C_REFRESH_RATE);
+    // limit task refresh rate
+    vTaskDelay(I2C_REFRESH_RATE);
+  }
 }
 
 /**
