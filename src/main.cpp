@@ -49,14 +49,14 @@
 // tasks
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 2         // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 250   // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 1         // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 150   // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 2048 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING false
+#define ENABLE_DEBUGGING true
 
 /*
 ===============================================================================================
@@ -553,7 +553,7 @@ void DisplayTask(void *pvParameters)
         }
         else
         {
-          tft.printf("speed (mph): ---", data.speed);
+          tft.printf("speed (mph): ---  ", data.speed);
         }
 
         // angle data
@@ -681,14 +681,6 @@ void DisplayTask(void *pvParameters)
       if (debugger.debugEnabled)
       {
         debugger.displayTaskCount++;
-
-        if (debugger.display_debugEnabled)
-        {
-          tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-          tft.setTextSize(2);
-          tft.setCursor(300, 0);
-          tft.printf("%d", debugger.displayRefreshRate);
-        }
       }
 
       // release mutex!
@@ -879,11 +871,11 @@ void PrintDisplayDebug()
 {
   Serial.printf("\n--- start display debug ---\n");
 
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(2);
-  tft.setCursor(0, 0);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-  tft.printf("%s", debugger.debugText.c_str());
+  // tft.fillScreen(TFT_BLACK);
+  // tft.setTextSize(2);
+  // tft.setCursor(0, 0);
+  // tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+  // tft.printf("%s", debugger.debugText.c_str());
 
   Serial.printf("\n--- end display debug ---\n");
 }
@@ -921,8 +913,6 @@ void PrintSchedulerDebug()
   taskRefreshRate.push_back(debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount);
   taskRefreshRate.push_back(debugger.i2cTaskCount - debugger.i2cTaskPreviousCount);
   taskRefreshRate.push_back(debugger.displayTaskCount - debugger.displayTaskPreviousCount);
-
-  debugger.displayRefreshRate = (int)debugger.displayTaskCount - (int)debugger.displayTaskPreviousCount;
 
   // make it usable
   for (int i = 0; i < taskStates.size() - 1; ++i)
