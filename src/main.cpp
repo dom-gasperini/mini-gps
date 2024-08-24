@@ -50,7 +50,7 @@
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define I2C_REFRESH_RATE 1         // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 150   // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 300   // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 2048 // in bytes
@@ -229,14 +229,10 @@ void setup()
   // GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
   // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
 
-  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+  gps.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
 
   // Request updates on antenna status, comment out to keep quiet
   // gps.sendCommand(PGCMD_ANTENNA);
-
-  // Ask for firmware version
-  Serial.printf("gps library version: ");
-  gps.println(PMTK_Q_RELEASE);
 
   Serial.printf("gps init [ success ]\n");
   // -------------------------------------------------------------------------- //
@@ -265,12 +261,12 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 4, &xHandleI2C);
+      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 16, &xHandleI2C);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDisplay);
+      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay);
     }
 
     if (debugger.debugEnabled == true)
@@ -403,55 +399,49 @@ void I2CTask(void *pvParameters)
   for (;;)
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t)5) == pdTRUE)
     {
       // read gps data
-      if (gps.read())
+      if (gps.read() && gps.newNMEAreceived())
       {
-        // read i2c bus for gps data
-        // if a sentence is received, we can check the checksum, parse it...
-        if (gps.newNMEAreceived())
+        gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+
+        // connection data
+        data.connected = gps.fix;
+        data.fixQuality = gps.fixquality;
+
+        data.numSats = gps.satellites;
+        data.dtLastFix = gps.secondsSinceFix();
+        data.dtSinceTime = gps.secondsSinceTime();
+        data.dtSinceTime = gps.secondsSinceDate();
+
+        // collect location data
+        data.latitude = gps.latitudeDegrees;
+        data.longitude = gps.longitudeDegrees;
+        data.altitude = gps.altitude;
+
+        // collect speed data
+        data.speed = gps.speed * 1.1507795; // speed is given in knots, convert to mph
+        if (data.speed < 0.5)               // no need for like 0.1 mph of speed
         {
-          // a tricky thing here is if we print the NMEA sentence, or data
-          // we end up not listening and catching other sentences!
-          // so be very wary if using OUTPUT_ALLDATA and trying to print out data
-          // Serial.println(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-          gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
-
-          // connection data
-          data.connected = gps.fix;
-          data.fixQuality = gps.fixquality;
-
-          data.numSats = gps.satellites;
-          data.dtLastFix = gps.secondsSinceFix();
-          data.dtSinceTime = gps.secondsSinceTime();
-          data.dtSinceTime = gps.secondsSinceDate();
-
-          // collect location data
-          data.latitude = gps.latitudeDegrees;
-          data.longitude = gps.longitudeDegrees;
-          data.altitude = gps.altitude;
-
-          // collect speed data
-          data.speed = gps.speed * 1.1507795; // speed is given in knots, convert to mph
-          if (data.speed < 0.5)               // no need for like 0.1 mph of speed
-            data.speed = 0;
-
-          // collect angle data, current heading
-          data.angle = gps.angle;
-
-          // collect date data
-          data.year = gps.year + 2000;
-          data.month = gps.month;
-          data.day = gps.day;
-
-          // collect time data
-          data.hour = gps.hour;
-          data.minute = gps.minute;
-          data.second = gps.seconds;
-
-          data.validTime = ValidTime();
+          data.speed = 0;
         }
+
+        // collect angle data, current heading
+        data.angle = gps.angle;
+
+        // collect date data
+        data.year = gps.year + 2000;
+        data.month = gps.month;
+        data.day = gps.day;
+
+        // collect time data
+        data.hour = gps.hour;
+        data.minute = gps.minute;
+        data.second = gps.seconds;
+
+        // data.validTime = ValidTime();
+        data.validTime = true;
       }
 
       // debugging
@@ -478,7 +468,7 @@ void DisplayTask(void *pvParameters)
   for (;;)
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t)1) == pdTRUE)
     {
       // clear screen on state change
       if (data.wasConnected != data.connected || data.wasValidTime != data.validTime)
@@ -500,21 +490,6 @@ void DisplayTask(void *pvParameters)
         // outline boxes
         tft.drawRect(0, 25, 320, 155, TFT_DARKCYAN);
         tft.drawRect(0, 185, 320, 55, TFT_MAGENTA);
-
-        // flash a circle top right as activity indicator
-        if (refreshCounter <= REFRESH_DELAY)
-        {
-          tft.fillCircle(305, 10, 10, TFT_GREEN);
-        }
-        if (refreshCounter >= REFRESH_DELAY)
-        {
-          tft.fillCircle(305, 10, 10, TFT_BLACK);
-        }
-        if (refreshCounter >= (REFRESH_DELAY * 2))
-        {
-          refreshCounter = 0;
-        }
-        refreshCounter++;
 
         // set info font size and color
         tft.setTextSize(2);
@@ -635,7 +610,7 @@ void DisplayTask(void *pvParameters)
           tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
         }
 
-        if (data.dtLastFix > 6000)
+        if (data.dtLastFix > 120)
         {
           tft.printf("unreliable data", data.dtLastFix);
         }
@@ -736,8 +711,8 @@ void DebugTask(void *pvParameters)
 
 void loop()
 {
-  // everything is managed by RTOS, so nothing really happens here!
-  vTaskDelay(1); // prevent watchdog from getting upsets
+  // everything is managed by RTOS, so nothing happens here!
+  vTaskDelay(1); // prevent watchdog from getting upset
 }
 
 /*
