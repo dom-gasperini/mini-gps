@@ -1,6 +1,6 @@
 # mini-gps
 
-a mini gps location device with up to 1m of precision
+a mini gps location device working on battery power in real time with up to 1 meter of precision
 
 ## hardware
 
