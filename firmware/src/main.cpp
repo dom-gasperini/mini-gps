@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief mini-gps
- * @version 2.0
- * @date 2024-06-08
+ * @version 2.1
+ * @date 2024-12-05
  *
  * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espregpsSerialif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
@@ -37,14 +37,11 @@
 */
 
 // i2c
-#define I2C_FREQUENCY 9600
+#define I2C_FREQUENCY 115200
 #define I2C_GPS_ADDR 0x10
 
 // display
 #define REFRESH_DELAY 5
-
-// gps
-#define GPS_BAUD 9600
 
 // tasks
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
@@ -56,7 +53,7 @@
 #define TASK_STACK_SIZE 2048 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING true
+#define ENABLE_DEBUGGING false
 
 /*
 ===============================================================================================
@@ -199,7 +196,7 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // ----------------------- initialize I2C connection --------------------- //
-  if (I2CGPS.begin(I2C_SCL_PIN, I2C_SDA_PIN) == true)
+  if (I2CGPS.begin(I2C_SCL_PIN, I2C_SDA_PIN, I2C_FREQUENCY) == true)
   {
     Serial.printf("i2c bus init [ success ]\n");
     setup.i2cActive = true;
@@ -215,23 +212,40 @@ void setup()
   tft.setRotation(3);
   tft.fillScreen(TFT_BLACK);
 
+  // display gps information
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_RED);
+  tft.setCursor(0, 0);
+  tft.printf("mini-gps:");
+
+  // outline boxes
+  tft.drawRect(0, 25, 320, 155, TFT_DARKCYAN);
+  tft.drawRect(0, 185, 320, 55, TFT_MAGENTA);
+
+  // set info font size and color
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
+
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  gps.begin(I2C_GPS_ADDR); // The I2C address to use is 0x10
+  gps.begin(I2C_GPS_ADDR);
+
+  // set gps i2c baud rate
+  gps.sendCommand(PMTK_SET_BAUD_115200);
 
   // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
   gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
-  // uncomment this line to turn on only the "minimum recommended" data
-  // GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCONLY);
-  // For parsing data, we don't suggest using anything but either RMC only or RMC+GGA since
-
+  // set gps to mcu update rate
   gps.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
 
-  // Request updates on antenna status, comment out to keep quiet
+  // set gps position fix rate
+  gps.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
+
+  // request updates on antenna status (don't need this on)
   // gps.sendCommand(PGCMD_ANTENNA);
 
   Serial.printf("gps init [ success ]\n");
@@ -261,12 +275,12 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 16, &xHandleI2C);
+      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 16, &xHandleI2C); // 16 seems optimal
     }
 
     if (setup.displayActive)
     {
-      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 4, &xHandleDisplay);
+      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 8, &xHandleDisplay); // 4 seems optimal
     }
 
     if (debugger.debugEnabled == true)
@@ -399,12 +413,12 @@ void I2CTask(void *pvParameters)
   for (;;)
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)5) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t)1) == pdTRUE)
     {
       // read gps data
       if (gps.read() && gps.newNMEAreceived())
       {
-        gps.parse(gps.lastNMEA()); // this also sets the newNMEAreceived() flag to false
+        gps.parse(gps.lastNMEA()); // this sets the newNMEAreceived() flag to false
 
         // connection data
         data.connected = gps.fix;
@@ -468,189 +482,133 @@ void DisplayTask(void *pvParameters)
   for (;;)
   {
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)1) == pdTRUE)
+    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
     {
-      // clear screen on state change
-      if (data.wasConnected != data.connected || data.wasValidTime != data.validTime)
+      // location data
+      tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
+      if (data.numSats >= 3)
       {
-        data.wasConnected = data.connected;
-        data.wasValidTime = data.validTime;
-        tft.fillScreen(TFT_BLACK);
+        tft.setCursor(5, 30);
+        tft.printf("latitude: %f", data.latitude);
+
+        tft.setCursor(5, 50);
+        tft.printf("longitude: %f", data.longitude);
+
+        tft.setCursor(5, 70);
+        tft.printf("altitude: %.1fm   ", data.altitude);
       }
-
-      // check connection
-      if (data.connected || data.validTime)
-      {
-        // display gps information
-        tft.setTextSize(3);
-        tft.setTextColor(TFT_RED);
-        tft.setCursor(0, 0);
-        tft.printf("mini-gps:");
-
-        // outline boxes
-        tft.drawRect(0, 25, 320, 155, TFT_DARKCYAN);
-        tft.drawRect(0, 185, 320, 55, TFT_MAGENTA);
-
-        // set info font size and color
-        tft.setTextSize(2);
-        tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
-
-        // location data
-        if (data.numSats >= 3)
-        {
-          tft.setCursor(5, 30);
-          tft.printf("latitude: %f", data.latitude);
-
-          tft.setCursor(5, 50);
-          tft.printf("longitude: %f", data.longitude);
-
-          tft.setCursor(5, 70);
-          tft.printf("altitude: %.1fm   ", data.altitude);
-        }
-        else
-        {
-          tft.setCursor(5, 30);
-          tft.printf("latitude:  ---.---     ");
-
-          tft.setCursor(5, 50);
-          tft.printf("longitude: ---.---     ");
-
-          tft.setCursor(5, 70);
-          tft.printf("altitude:  ---.---     ");
-        }
-
-        // speed data
-        tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
-        tft.setCursor(5, 95);
-        if (data.numSats >= 4)
-        {
-          tft.printf("speed (mph): %.1f ", data.speed);
-        }
-        else
-        {
-          tft.printf("speed (mph): ---  ", data.speed);
-        }
-
-        // angle data
-        tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
-        tft.setCursor(5, 115);
-        if (data.speed > 0.5)
-        {
-          tft.printf("heading: %.1f ", data.angle);
-        }
-        else
-        {
-          tft.printf("heading: ---  ", data.angle);
-        }
-
-        // date
-        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-        tft.setCursor(5, 140);
-        tft.printf("date: %d / %d / %d    ", data.year, data.month, data.day);
-
-        // time
-        tft.setCursor(5, 160);
-        tft.printf("time: %d:%d:%d (UTC)      ", data.hour, data.minute, data.second);
-
-        // sat data
-        tft.setCursor(5, 190);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-        tft.printf("sats: ");
-
-        if (data.numSats == 0)
-          tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        if (data.numSats > 0 && data.numSats <= 3)
-          tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-        if (data.numSats >= 3)
-          tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-
-        tft.printf("%d ", data.numSats);
-
-        // connection type
-        tft.setCursor(130, 190);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-        tft.printf("status: ");
-        switch (data.fixQuality)
-        {
-        case 0:
-          tft.setTextColor(TFT_RED, TFT_BLACK, true);
-          tft.printf("NO CONN");
-          break;
-
-        case 1:
-          tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-          tft.printf("GPS    ");
-          break;
-
-        case 2:
-          tft.setTextColor(TFT_BLUE, TFT_BLACK, true);
-          tft.printf("D-GPS  ");
-          break;
-
-        default:
-          tft.setTextColor(TFT_RED, TFT_BLACK, true);
-          tft.printf("uh-oh  ");
-          break;
-        }
-
-        // time since last fix
-        tft.setCursor(5, 220);
-        tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-        tft.printf("dt-fix: ");
-        if (data.dtLastFix < 3.0 && data.dtLastFix > 0)
-        {
-          tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-        }
-        else if (data.dtLastFix > 6000) // no fix!
-        {
-          tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        }
-        else
-        {
-          tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-        }
-
-        if (data.dtLastFix > 120)
-        {
-          tft.printf("unreliable data", data.dtLastFix);
-        }
-        else
-        {
-          tft.printf("%.1f seconds    ", data.dtLastFix);
-        }
-      }
-
-      // no connection
       else
       {
-        // flash a circle top left as activity indicator
-        if (refreshCounter <= REFRESH_DELAY)
-        {
-          tft.fillCircle(10, 10, 10, TFT_GREEN);
-        }
-        if (refreshCounter >= REFRESH_DELAY)
-        {
-          tft.fillCircle(10, 10, 10, TFT_BLACK);
-        }
-        if (refreshCounter >= (REFRESH_DELAY * 2))
-        {
-          refreshCounter = 0;
-        }
-        refreshCounter++;
+        tft.setCursor(5, 30);
+        tft.printf("latitude:  ---.---     ");
 
-        // text for status indicator
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        tft.setCursor(30, 5);
-        tft.printf("searching...");
+        tft.setCursor(5, 50);
+        tft.printf("longitude: ---.---     ");
 
-        // general info
-        tft.setTextSize(2);
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        tft.setCursor(80, 110);
-        tft.printf("< no signal >");
-        tft.setCursor(40, 130);
-        tft.printf("< rtc data invalid >");
+        tft.setCursor(5, 70);
+        tft.printf("altitude:  ---.---     ");
       }
+
+      // speed data
+      tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
+      tft.setCursor(5, 95);
+      if (data.numSats >= 4)
+      {
+        tft.printf("speed (mph): %.1f ", data.speed);
+      }
+      else
+      {
+        tft.printf("speed (mph): ---  ", data.speed);
+      }
+
+      // angle data
+      tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
+      tft.setCursor(5, 115);
+      if (data.speed > 0.5)
+      {
+        tft.printf("heading: %.1f ", data.angle);
+      }
+      else
+      {
+        tft.printf("heading: ---  ", data.angle);
+      }
+
+      // date
+      tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+      tft.setCursor(5, 140);
+      tft.printf("date: %d / %d / %d    ", data.year, data.month, data.day);
+
+      // time
+      tft.setCursor(5, 160);
+      tft.printf("time: %d:%d:%d (UTC)      ", data.hour, data.minute, data.second);
+
+      // sat data
+      tft.setCursor(5, 190);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
+      tft.printf("sats: ");
+
+      if (data.numSats == 0)
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+      if (data.numSats > 0 && data.numSats <= 3)
+        tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
+      if (data.numSats >= 3)
+        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+
+      tft.printf("%d ", data.numSats);
+
+      // connection type
+      tft.setCursor(130, 190);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
+      tft.printf("status: ");
+      switch (data.fixQuality)
+      {
+      case 0:
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+        tft.printf("NO CONN");
+        break;
+
+      case 1:
+        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+        tft.printf("GPS    ");
+        break;
+
+      case 2:
+        tft.setTextColor(TFT_BLUE, TFT_BLACK, true);
+        tft.printf("D-GPS  ");
+        break;
+
+      default:
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+        tft.printf("uh-oh  ");
+        break;
+      }
+
+      // time since last fix
+      tft.setCursor(5, 220);
+      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
+      tft.printf("dt-fix: ");
+      if (data.dtLastFix < 3.0 && data.dtLastFix > 0)
+      {
+        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+      }
+      else if (data.dtLastFix > 6000) // no fix!
+      {
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+      }
+      else
+      {
+        tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
+      }
+
+      if (data.dtLastFix > 120)
+      {
+        tft.printf("unreliable data", data.dtLastFix);
+      }
+      else
+      {
+        tft.printf("%.1f seconds    ", data.dtLastFix);
+      }
+      // }
 
       // debugging
       if (debugger.debugEnabled)
