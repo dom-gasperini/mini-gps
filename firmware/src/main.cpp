@@ -556,7 +556,7 @@ void DisplayTask(void *pvParameters)
         tft.setCursor(5, 140);
         tft.printf("date: -- / -- / --    ", data.year, data.month, data.day);
 
-        tft.setTextColor(TFT_PURPLE, TFT_BLACK, true);
+        tft.setTextColor(TFT_MAGENTA, TFT_BLACK, true);
         tft.setCursor(5, 160);
         tft.printf("uptime: %d:%d:%d          ", data.hour, data.minute, data.second);
       }
@@ -590,7 +590,7 @@ void DisplayTask(void *pvParameters)
         if (data.validTime)
         {
           tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-          tft.printf("no fix");
+          tft.printf("no fix ");
         }
         else // no fix and no date time data
         {
@@ -625,23 +625,24 @@ void DisplayTask(void *pvParameters)
       if (data.dtLastFix < 1.0)
       {
         tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+        tft.printf("%.2f seconds    ", data.dtLastFix);
       }
       else if (data.dtLastFix < 60 && data.dtLastFix > 1.0) // been a bit since a connection
       {
         tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
+        tft.printf("%.2f seconds    ", data.dtLastFix);
       }
-      else // no fix!
+      else // longer than a minute without a fix
       {
         tft.setTextColor(TFT_RED, TFT_BLACK, true);
-      }
-
-      if (data.dtLastFix > 60)
-      {
-        tft.printf("unreliable data", data.dtLastFix);
-      }
-      else
-      {
-        tft.printf("%.2f seconds    ", data.dtLastFix);
+        if (data.validTime)
+        {
+          tft.printf("date/time data ", data.dtLastFix);
+        }
+        else
+        {
+          tft.printf("unreliable data", data.dtLastFix);
+        }
       }
 
       // activity animation
@@ -784,7 +785,7 @@ void ActivityAnimation()
     if (data.validTime)
     {
       // arrows building inwards
-      tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+      tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
       switch (displayRefreshCounter)
       {
       case 0:
