@@ -2,8 +2,6 @@
 
 a gps location device
 
-![mini-gps-image](https://github.com/user-attachments/assets/983b9aa3-ffc9-48a9-b8bf-7800d0f6c5f9)
-
 ## details
 - down to 3 meters of precision
 - realtime determination of velocity accurate to 0.1 knots
