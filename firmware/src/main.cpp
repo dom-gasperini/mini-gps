@@ -43,6 +43,10 @@
 // display
 #define REFRESH_DELAY 5
 
+// general
+#define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
+#define MIN_SPEED 2.0          // minimum number of knots to reach before displaying speed to due the resolution limitations
+#define FINAL_VALID_OPERATING_YEAR 2080
 // tasks
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
@@ -430,19 +434,24 @@ void I2CTask(void *pvParameters)
         data.dtSinceTime = gps.secondsSinceDate();
 
         // collect location data
-        data.latitude = gps.latitudeDegrees;
-        data.longitude = gps.longitudeDegrees;
-        data.altitude = gps.altitude;
+        data.latitude = static_cast<int>(gps.latitudeDegrees * 100000);   // shorten to 5 decimal places of precision
+        data.longitude = static_cast<int>(gps.longitudeDegrees * 100000); // shorten to 5 decimal places of precision
+        data.altitude = static_cast<int>(gps.altitude);                   // no decimal places of precision
 
-        // collect speed data
-        data.speed = gps.speed * 1.1507795; // speed is given in knots, convert to mph
-        if (data.speed < 0.5)               // no need for like 0.1 mph of speed
+        // collect vector data
+        data.speed = gps.speed; // speed is given in knots
+        data.angle = gps.angle;
+
+        // not enough resolution for accurately measuring very low speeds
+        if (data.speed > MIN_SPEED)
+        {
+          data.speed = data.speed * KNOTS_TO_MPH; // convert to mph
+        }
+        else
         {
           data.speed = 0;
+          data.angle = 0;
         }
-
-        // collect angle data, current heading
-        data.angle = gps.angle;
 
         // collect date data
         data.year = gps.year + 2000;
@@ -454,8 +463,7 @@ void I2CTask(void *pvParameters)
         data.minute = gps.minute;
         data.second = gps.seconds;
 
-        // data.validTime = ValidTime();
-        data.validTime = true;
+        data.validTime = ValidTime();
       }
 
       // debugging
@@ -489,13 +497,13 @@ void DisplayTask(void *pvParameters)
       if (data.numSats >= 3)
       {
         tft.setCursor(5, 30);
-        tft.printf("latitude: %f", data.latitude);
+        tft.printf("latitude: %.5f", data.latitude);
 
         tft.setCursor(5, 50);
-        tft.printf("longitude: %f", data.longitude);
+        tft.printf("longitude: %.5f", data.longitude);
 
         tft.setCursor(5, 70);
-        tft.printf("altitude: %.1fm   ", data.altitude);
+        tft.printf("altitude: %dm   ", (int)data.altitude);
       }
       else
       {
@@ -512,7 +520,7 @@ void DisplayTask(void *pvParameters)
       // speed data
       tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
       tft.setCursor(5, 95);
-      if (data.numSats >= 4)
+      if (data.numSats > 3)
       {
         tft.printf("speed (mph): %.1f ", data.speed);
       }
@@ -533,14 +541,26 @@ void DisplayTask(void *pvParameters)
         tft.printf("heading: ---  ", data.angle);
       }
 
-      // date
-      tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-      tft.setCursor(5, 140);
-      tft.printf("date: %d / %d / %d    ", data.year, data.month, data.day);
+      // date and time
+      if (data.validTime)
+      {
+        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
+        tft.setCursor(5, 140);
+        tft.printf("date: %d / %d / %d    ", data.year, data.month, data.day);
 
-      // time
-      tft.setCursor(5, 160);
-      tft.printf("time: %d:%d:%d (UTC)      ", data.hour, data.minute, data.second);
+        tft.setCursor(5, 160);
+        tft.printf("time: %d:%d:%d (UTC)      ", data.hour, data.minute, data.second);
+      }
+      else
+      {
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+        tft.setCursor(5, 140);
+        tft.printf("date: -- / -- / --    ", data.year, data.month, data.day);
+
+        tft.setTextColor(TFT_PINK, TFT_BLACK, true);
+        tft.setCursor(5, 160);
+        tft.printf("uptime: %d:%d:%d          ", data.hour, data.minute, data.second);
+      }
 
       // sat data
       tft.setCursor(5, 190);
@@ -551,7 +571,7 @@ void DisplayTask(void *pvParameters)
         tft.setTextColor(TFT_RED, TFT_BLACK, true);
       if (data.numSats > 0 && data.numSats <= 3)
         tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-      if (data.numSats >= 3)
+      if (data.numSats > 3)
         tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
 
       tft.printf("%d ", data.numSats);
@@ -579,7 +599,7 @@ void DisplayTask(void *pvParameters)
 
       default:
         tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        tft.printf("uh-oh  ");
+        tft.printf("err:%d ", data.fixQuality);
         break;
       }
 
@@ -587,28 +607,27 @@ void DisplayTask(void *pvParameters)
       tft.setCursor(5, 220);
       tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
       tft.printf("dt-fix: ");
-      if (data.dtLastFix < 3.0 && data.dtLastFix > 0)
+      if (data.dtLastFix < 1.0)
       {
         tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
       }
-      else if (data.dtLastFix > 6000) // no fix!
-      {
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-      }
-      else
+      else if (data.dtLastFix < 60 && data.dtLastFix > 1.0) // been a bit since a connection
       {
         tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
       }
+      else // no fix!
+      {
+        tft.setTextColor(TFT_RED, TFT_BLACK, true);
+      }
 
-      if (data.dtLastFix > 120)
+      if (data.dtLastFix > 60)
       {
         tft.printf("unreliable data", data.dtLastFix);
       }
       else
       {
-        tft.printf("%.1f seconds    ", data.dtLastFix);
+        tft.printf("%.2f seconds    ", data.dtLastFix);
       }
-      // }
 
       // debugging
       if (debugger.debugEnabled)
@@ -719,28 +738,15 @@ String TaskStateToString(eTaskState state)
  */
 bool ValidTime()
 {
-  // inits
-  bool valid = true;
-  uint64_t cutoff = 10; // in seconds
-
-  if (data.hour == 0 && data.minute == 0 && data.second == 0)
+  // test for default chip year
+  if (data.year >= FINAL_VALID_OPERATING_YEAR)
   {
-    if (data.timeout == 0)
-    {
-      data.timeout = (long)esp_rtc_get_time_us() + (cutoff * 1000000); // to microseconds
-    }
-
-    if (data.timeout <= esp_rtc_get_time_us())
-    {
-      valid = false;
-    }
+    return false;
   }
   else
   {
-    data.timeout = 0;
+    return true;
   }
-
-  return valid;
 }
 
 /*

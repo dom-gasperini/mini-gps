@@ -12,6 +12,12 @@
     "string_view": "cpp",
     "memory": "cpp",
     "random": "cpp",
-    "initializer_list": "cpp"
+    "initializer_list": "cpp",
+    "istream": "cpp",
+    "ostream": "cpp",
+    "functional": "cpp",
+    "tuple": "cpp",
+    "type_traits": "cpp",
+    "utility": "cpp"
   }
 }
