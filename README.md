@@ -1,6 +1,11 @@
 # mini-gps
 
-a mini gps location device working on battery power in real time with up to 1 meter of precision
+a gps location device
+
+## details
+- down to 3 meters of precision
+- realtime determination of velocity accurate to 0.1 knots
+- powered by 2 AA batteries (8-10 hours of battery)
 
 ## hardware
 
