@@ -33,7 +33,6 @@ esp_pm_config_esp32_t power_configuration{
 */
 
 // inputs
-// #define SLEEP_BUTTON_PIN 18
 
 // ic2
 #define I2C_SCL_PIN 19

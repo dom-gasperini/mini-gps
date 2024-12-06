@@ -64,7 +64,6 @@ typedef struct Data
 
 /**
  * @brief debugger structure
- *
  */
 typedef struct Debugger
 {
