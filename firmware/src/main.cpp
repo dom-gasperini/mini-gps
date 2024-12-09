@@ -45,7 +45,7 @@
 
 // general
 #define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
-#define MIN_SPEED 1.75         // minimum number of knots before displaying speed to due resolution limitations
+#define MIN_SPEED 2.00         // minimum number of knots before displaying speed to due resolution limitations
 #define FINAL_VALID_OPERATING_YEAR 2080
 #define START_VALID_OPERATING_YEAR 2024
 
@@ -70,8 +70,7 @@
 Data data = {
     .connected = false,
     .wasConnected = false,
-    .validTime = false,
-    .wasValidTime = false,
+    .validDate = false,
     .fixQuality = 0,
     .dtLastFix = 0.0f,
     .dtSinceDate = 0.0f,
@@ -157,7 +156,7 @@ void DebugTask(void *pvParameters);
 
 // helpers
 String TaskStateToString(eTaskState state);
-bool ValidTime();
+bool IsValidDate();
 void ActivityAnimation();
 
 /*
@@ -461,7 +460,7 @@ void I2CTask(void *pvParameters)
         data.minute = gps.minute;
         data.second = gps.seconds;
 
-        data.validTime = ValidTime();
+        data.validDate = IsValidDate();
       }
 
       // debugging
@@ -525,7 +524,7 @@ void DisplayTask(void *pvParameters)
       }
       else
       {
-        tft.printf("speed: ---     ", data.speed);
+        tft.printf("speed: ---      ", data.speed);
       }
 
       // angle data
@@ -533,15 +532,15 @@ void DisplayTask(void *pvParameters)
       tft.setCursor(5, 115);
       if (data.speed > 0.5)
       {
-        tft.printf("heading: %.1f deg", data.angle);
+        tft.printf("heading: %d deg", (int)data.angle);
       }
       else
       {
-        tft.printf("heading: ---     ", data.angle);
+        tft.printf("heading: ---      ", data.angle);
       }
 
       // date and time
-      if (data.validTime)
+      if (data.validDate)
       {
         tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
         tft.setCursor(5, 140);
@@ -558,7 +557,7 @@ void DisplayTask(void *pvParameters)
 
         tft.setTextColor(TFT_MAGENTA, TFT_BLACK, true);
         tft.setCursor(5, 160);
-        tft.printf("uptime: %d:%d:%d          ", data.hour, data.minute, data.second);
+        tft.printf("time: %d:%d:%d            ", data.hour, data.minute, data.second);
       }
 
       // sat data
@@ -587,7 +586,7 @@ void DisplayTask(void *pvParameters)
       {
       // invalid fix quality
       case 0:
-        if (data.validTime)
+        if (data.validDate)
         {
           tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
           tft.printf("no fix ");
@@ -627,7 +626,7 @@ void DisplayTask(void *pvParameters)
         tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
         tft.printf("%.2f seconds    ", data.dtLastFix);
       }
-      else if (data.dtLastFix < 60 && data.dtLastFix > 1.0) // been a bit since a connection
+      else if (data.dtLastFix < 120 && data.dtLastFix > 1.0) // been a bit since a connection
       {
         tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
         tft.printf("%.2f seconds    ", data.dtLastFix);
@@ -635,9 +634,9 @@ void DisplayTask(void *pvParameters)
       else // longer than a minute without a fix
       {
         tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        if (data.validTime)
+        if (data.validDate)
         {
-          tft.printf("date/time data ", data.dtLastFix);
+          tft.printf("> 2 minutes     ", data.dtLastFix);
         }
         else
         {
@@ -757,7 +756,7 @@ String TaskStateToString(eTaskState state)
 /**
  * @brief determine if the real-time clock is cold started or warm started
  */
-bool ValidTime()
+bool IsValidDate()
 {
   // test for valid year data
   if (data.year >= FINAL_VALID_OPERATING_YEAR || data.year < START_VALID_OPERATING_YEAR)
@@ -782,7 +781,7 @@ void ActivityAnimation()
   {
   // invalid fix quality
   case 0:
-    if (data.validTime)
+    if (data.validDate)
     {
       // arrows building inwards
       tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);

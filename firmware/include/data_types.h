@@ -36,8 +36,7 @@ typedef struct Data
 {
     bool connected;
     bool wasConnected;
-    bool validTime;
-    bool wasValidTime;
+    bool validDate;
     uint8_t fixQuality;
     float dtLastFix;
     float dtSinceDate;
