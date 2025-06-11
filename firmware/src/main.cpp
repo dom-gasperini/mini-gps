@@ -52,13 +52,13 @@
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define I2C_REFRESH_RATE 10        // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 5000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 200   // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 2048 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING false
+#define ENABLE_DEBUGGING true
 
 /*
 ===============================================================================================
@@ -256,7 +256,7 @@ void setup()
 
   // ------------------------------- scheduler & task status --------------------------------- //
   // init mutex
-  xSemaphore = xSemaphoreCreateBinary();
+  xSemaphore = xSemaphoreCreateCounting(100, 0);
 
   // task setup status
   Serial.printf("\ntask setup status:\n");
@@ -275,12 +275,12 @@ void setup()
 
     if (setup.i2cActive)
     {
-      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleI2C, GPS_CORE); // 16 seems optimal
+      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleI2C, GPS_CORE);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay, DISPLAY_CORE); // 4 seems optimal
+      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay, DISPLAY_CORE);
     }
 
     if (debugger.debugEnabled == true)
@@ -492,11 +492,19 @@ void DisplayTask(void *pvParameters)
   for (;;)
   {
     // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, I2C_REFRESH_RATE);
+    vTaskDelayUntil(&taskLastWakeTick, DISPLAY_REFRESH_RATE);
 
     // check for mutex availability
     if (xSemaphoreTake(xSemaphore, (TickType_t)0))
     {
+
+      int semaphoreCount = uxSemaphoreGetCount(xSemaphore);
+      while (semaphoreCount > 0)
+      {
+        xSemaphoreTake(xSemaphore, (TickType_t)0);
+        semaphoreCount--;
+      }
+
       // location data
       tft.setTextSize(2);
       tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
