@@ -3,7 +3,7 @@
  * @author dom gasperini
  * @brief mini-gps
  * @version 2.2
- * @date 2024-12-05
+ * @date 2025-06-10
  *
  * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.espregpsSerialif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
