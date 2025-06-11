@@ -1,6 +1,6 @@
-.pio/build/esp32dev/liba40/TFT_eSPI/TFT_eSPI.cpp.o: \
- .pio/libdeps/esp32dev/TFT_eSPI/TFT_eSPI.cpp \
- .pio/libdeps/esp32dev/TFT_eSPI/TFT_eSPI.h \
+.pio/build/esp32dev/libad9/Adafruit\ GPS\ Library/NMEA_data.cpp.o: \
+ .pio/libdeps/esp32dev/Adafruit\ GPS\ Library/src/NMEA_data.cpp \
+ .pio/libdeps/esp32dev/Adafruit\ GPS\ Library/src/Adafruit_GPS.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp_arduino_version.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include/freertos/FreeRTOS.h \
@@ -85,6 +85,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/log/include/esp_log_internal.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-matrix.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-uart.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/hal/include/hal/uart_types.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-gpio.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/esp32/pins_arduino.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-touch.h \
@@ -123,6 +124,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPAddress.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/HardwareSerial.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/HWCDC.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/USBCDC.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Esp.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/spi_flash/include/esp_partition.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/spi_flash/include/esp_flash.h \
@@ -133,106 +135,9 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_hw_support/include/soc/esp32/spiram.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
+ .pio/libdeps/esp32dev/Adafruit\ GPS\ Library/src/Adafruit_PMTK.h \
+ .pio/libdeps/esp32dev/Adafruit\ GPS\ Library/src/NMEA_data.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
- .pio/libdeps/esp32dev/TFT_eSPI/User_Setup_Select.h \
- .pio/libdeps/esp32dev/TFT_eSPI/User_Setup.h \
- .pio/libdeps/esp32dev/TFT_eSPI/TFT_Drivers/ILI9341_Defines.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Processors/TFT_eSPI_ESP32.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/spi_reg.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/driver/include/driver/spi_master.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/driver/include/driver/spi_common.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/include/soc/lldesc.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/esp_rom/include/esp32/rom/lldesc.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/include/soc/spi_periph.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/periph_defs.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/soc_pins.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/gpio_pins.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/spi_pins.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/sdio_slave_pins.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/sdmmc_pins.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/spi_struct.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/hal/include/hal/spi_types.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/hal/esp32/include/hal/gpio_ll.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/rtc_cntl_reg.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/soc/esp32/include/soc/rtc_io_reg.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/hal/platform_port/include/hal/misc.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/FS.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src/SPIFFS.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/glcdfont.c \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font16.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font16.c \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font32rle.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font32rle.c \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font64rle.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font64rle.c \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font7srle.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font7srle.c \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font72rle.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Font72rle.c \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/gfxfont.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/TomThumb.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMono9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMono12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMono18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMono24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoOblique9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoOblique12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoOblique18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoOblique24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBold9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBold12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBold18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBold24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBoldOblique9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBoldOblique12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBoldOblique18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeMonoBoldOblique24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSans9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSans12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSans18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSans24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansOblique9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansOblique12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansOblique18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansOblique24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBold9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBold12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBold18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBold24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBoldOblique9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBoldOblique12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBoldOblique18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSansBoldOblique24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerif9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerif12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerif18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerif24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifItalic9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifItalic12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifItalic18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifItalic24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBold9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBold12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBold18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBold24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBoldItalic9pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBoldItalic12pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBoldItalic18pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/GFXFF/FreeSerifBoldItalic24pt7b.h \
- .pio/libdeps/esp32dev/TFT_eSPI/User_Setups/User_Custom_Fonts.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Custom/Orbitron_Light_24.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Custom/Orbitron_Light_32.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Custom/Roboto_Thin_24.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Custom/Satisfy_24.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Fonts/Custom/Yellowtail_32.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Extensions/Smooth_font.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Extensions/Button.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Extensions/Sprite.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Processors/TFT_eSPI_ESP32.c \
- .pio/libdeps/esp32dev/TFT_eSPI/TFT_Drivers/ILI9341_Init.h \
- .pio/libdeps/esp32dev/TFT_eSPI/TFT_Drivers/ILI9341_Rotation.h \
- .pio/libdeps/esp32dev/TFT_eSPI/Extensions/Button.cpp \
- .pio/libdeps/esp32dev/TFT_eSPI/Extensions/Sprite.cpp \
- .pio/libdeps/esp32dev/TFT_eSPI/Extensions/Smooth_font.cpp
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h

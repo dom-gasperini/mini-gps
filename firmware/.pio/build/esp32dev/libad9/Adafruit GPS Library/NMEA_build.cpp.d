@@ -1,4 +1,4 @@
-.pio/build/esp32dev/libedb/Adafruit\ GPS\ Library/NMEA_build.cpp.o: \
+.pio/build/esp32dev/libad9/Adafruit\ GPS\ Library/NMEA_build.cpp.o: \
  .pio/libdeps/esp32dev/Adafruit\ GPS\ Library/src/NMEA_build.cpp \
  .pio/libdeps/esp32dev/Adafruit\ GPS\ Library/src/Adafruit_GPS.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
@@ -85,6 +85,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/log/include/esp_log_internal.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-matrix.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-uart.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/hal/include/hal/uart_types.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-gpio.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/esp32/pins_arduino.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-touch.h \
@@ -123,6 +124,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/IPAddress.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/HardwareSerial.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/HWCDC.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/USBCDC.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Esp.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/spi_flash/include/esp_partition.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/spi_flash/include/esp_flash.h \

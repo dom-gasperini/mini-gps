@@ -40,9 +40,6 @@
 #define I2C_FREQUENCY 115200
 #define I2C_GPS_ADDR 0x10
 
-// display
-#define REFRESH_DELAY 5
-
 // general
 #define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
 #define MIN_SPEED 2.00         // minimum number of knots before displaying speed to due resolution limitations
@@ -50,10 +47,12 @@
 #define START_VALID_OPERATING_YEAR 2024
 
 // tasks
+#define GPS_CORE 0
+#define DISPLAY_CORE 1
 #define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 1         // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 250   // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 10        // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 5000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 2048 // in bytes
@@ -128,8 +127,8 @@ Adafruit_GPS gps(&I2CGPS);
 TFT_eSPI tft = TFT_eSPI();
 int displayRefreshCounter = 0;
 
-// mutex
-SemaphoreHandle_t xMutex = NULL;
+// semaphore
+SemaphoreHandle_t xSemaphore = NULL;
 
 // hardware timer
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -241,7 +240,7 @@ void setup()
   gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
   // set gps to mcu update rate
-  gps.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
+  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
 
   // set gps position fix rate
   gps.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
@@ -257,7 +256,7 @@ void setup()
 
   // ------------------------------- scheduler & task status --------------------------------- //
   // init mutex
-  xMutex = xSemaphoreCreateMutex();
+  xSemaphore = xSemaphoreCreateBinary();
 
   // task setup status
   Serial.printf("\ntask setup status:\n");
@@ -266,22 +265,22 @@ void setup()
   Serial.printf("display task setup %s\n", setup.displayActive ? "complete" : "failed");
 
   // start tasks
-  if (xMutex != NULL)
+  if (xSemaphore != NULL)
   {
     if (setup.ioActive)
     {
-      xTaskCreate(IOReadTask, "read-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead);
-      xTaskCreate(IOWriteTask, "write-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite);
+      // xTaskCreate(IOReadTask, "read-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead);
+      // xTaskCreate(IOWriteTask, "write-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite);
     }
 
     if (setup.i2cActive)
     {
-      xTaskCreate(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 16, &xHandleI2C); // 16 seems optimal
+      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleI2C, GPS_CORE); // 16 seems optimal
     }
 
     if (setup.displayActive)
     {
-      xTaskCreate(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 8, &xHandleDisplay); // 4 seems optimal
+      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay, DISPLAY_CORE); // 4 seems optimal
     }
 
     if (debugger.debugEnabled == true)
@@ -359,19 +358,19 @@ void IOReadTask(void *pvParameters)
 {
   for (;;)
   {
-    // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
-    {
+    // // check for mutex availability
+    // if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
+    // {
 
-      // debugging
-      if (debugger.debugEnabled)
-      {
-        debugger.ioReadTaskCount++;
-      }
+    //   // debugging
+    //   if (debugger.debugEnabled)
+    //   {
+    //     debugger.ioReadTaskCount++;
+    //   }
 
-      // release mutex!
-      xSemaphoreGive(xMutex);
-    }
+    //   // release mutex!
+    //   xSemaphoreGive(xMutex);
+    // }
 
     // limit task refresh rate
     vTaskDelay(IO_READ_REFRESH_RATE);
@@ -386,19 +385,19 @@ void IOWriteTask(void *pvParameters)
 {
   for (;;)
   {
-    // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
-    {
+    // // check for mutex availability
+    // if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
+    // {
 
-      // debugging
-      if (debugger.debugEnabled)
-      {
-        debugger.ioWriteTaskCount++;
-      }
+    //   // debugging
+    //   if (debugger.debugEnabled)
+    //   {
+    //     debugger.ioWriteTaskCount++;
+    //   }
 
-      // release mutex!
-      xSemaphoreGive(xMutex);
-    }
+    //   // release mutex!
+    //   xSemaphoreGive(xMutex);
+    // }
 
     // limit task refresh rate
     vTaskDelay(IO_WRITE_REFRESH_RATE);
@@ -411,56 +410,65 @@ void IOWriteTask(void *pvParameters)
  */
 void I2CTask(void *pvParameters)
 {
+  // get task tick
+  TickType_t taskLastWakeTick = xTaskGetTickCount();
+
   for (;;)
   {
+    // limit task refresh rate
+    vTaskDelayUntil(&taskLastWakeTick, I2C_REFRESH_RATE);
+
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)1) == pdTRUE)
+    if (xSemaphoreGive(xSemaphore)) // TODO: add error handeling
     {
       // read gps data
-      if (gps.read() && gps.newNMEAreceived())
+      while (gps.read() != 0)
       {
-        gps.parse(gps.lastNMEA()); // this sets the newNMEAreceived() flag to false
-
-        // connection data
-        data.connected = gps.fix;
-        data.fixQuality = gps.fixquality;
-
-        data.numSats = gps.satellites;
-        data.dtLastFix = gps.secondsSinceFix();
-        data.dtSinceTime = gps.secondsSinceTime();
-        data.dtSinceTime = gps.secondsSinceDate();
-
-        // collect location data
-        data.latitude = gps.latitudeDegrees;
-        data.longitude = gps.longitudeDegrees;
-        data.altitude = gps.altitude;
-
-        // collect vector data
-        data.speed = gps.speed; // speed is given in knots
-        data.angle = gps.angle;
-
-        // not enough resolution for accurately measuring very low speeds
-        if (data.speed > MIN_SPEED)
+        if (gps.newNMEAreceived() == true)
         {
-          data.speed = data.speed * KNOTS_TO_MPH; // convert to mph
+          gps.parse(gps.lastNMEA()); // this sets the newNMEAreceived() flag to false
+
+          // connection data
+          data.connected = gps.fix;
+          data.fixQuality = gps.fixquality;
+
+          data.numSats = gps.satellites;
+          data.dtLastFix = gps.secondsSinceFix();
+          data.dtSinceTime = gps.secondsSinceTime();
+          data.dtSinceTime = gps.secondsSinceDate();
+
+          // collect location data
+          data.latitude = gps.latitudeDegrees;
+          data.longitude = gps.longitudeDegrees;
+          data.altitude = gps.altitude;
+
+          // collect vector data
+          data.speed = gps.speed; // speed is given in knots
+          data.angle = gps.angle;
+
+          // not enough resolution for accurately measuring very low speeds
+          if (data.speed > MIN_SPEED)
+          {
+            data.speed = data.speed * KNOTS_TO_MPH; // convert to mph
+          }
+          else
+          {
+            data.speed = 0;
+            data.angle = 0;
+          }
+
+          // collect date data
+          data.year = gps.year + 2000;
+          data.month = gps.month;
+          data.day = gps.day;
+
+          // collect time data
+          data.hour = gps.hour;
+          data.minute = gps.minute;
+          data.second = gps.seconds;
+
+          data.validDate = IsValidDate();
         }
-        else
-        {
-          data.speed = 0;
-          data.angle = 0;
-        }
-
-        // collect date data
-        data.year = gps.year + 2000;
-        data.month = gps.month;
-        data.day = gps.day;
-
-        // collect time data
-        data.hour = gps.hour;
-        data.minute = gps.minute;
-        data.second = gps.seconds;
-
-        data.validDate = IsValidDate();
       }
 
       // debugging
@@ -468,13 +476,7 @@ void I2CTask(void *pvParameters)
       {
         debugger.i2cTaskCount++;
       }
-
-      // release mutex!
-      xSemaphoreGive(xMutex);
     }
-
-    // limit task refresh rate
-    vTaskDelay(I2C_REFRESH_RATE);
   }
 }
 
@@ -484,10 +486,16 @@ void I2CTask(void *pvParameters)
  */
 void DisplayTask(void *pvParameters)
 {
+  // get task tick
+  TickType_t taskLastWakeTick = xTaskGetTickCount();
+
   for (;;)
   {
+    // limit task refresh rate
+    vTaskDelayUntil(&taskLastWakeTick, I2C_REFRESH_RATE);
+
     // check for mutex availability
-    if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
+    if (xSemaphoreTake(xSemaphore, (TickType_t)0))
     {
       // location data
       tft.setTextSize(2);
@@ -652,13 +660,7 @@ void DisplayTask(void *pvParameters)
       {
         debugger.displayTaskCount++;
       }
-
-      // release mutex!
-      xSemaphoreGive(xMutex);
     }
-
-    // limit task refresh rate
-    vTaskDelay(DISPLAY_REFRESH_RATE);
   }
 }
 
