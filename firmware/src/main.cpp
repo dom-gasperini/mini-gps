@@ -49,11 +49,11 @@
 // tasks
 #define GPS_CORE 0
 #define DISPLAY_CORE 1
-#define IO_WRITE_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define IO_READ_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 10        // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 200   // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000    // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_WRITE_REFRESH_RATE 100 // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define IO_READ_REFRESH_RATE 100  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 10       // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 100  // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE 1000   // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 #define TASK_STACK_SIZE 2048 // in bytes
 
@@ -196,7 +196,7 @@ void setup()
   // outputs
 
   Serial.printf("GPIO INIT [ SUCCESS ]\n");
-  setup.ioActive = false;
+  setup.ioActive = true;
   // -------------------------------------------------------------------------- //
 
   // ----------------------- initialize I2C connection --------------------- //
@@ -256,7 +256,7 @@ void setup()
 
   // ------------------------------- scheduler & task status --------------------------------- //
   // init mutex
-  xSemaphore = xSemaphoreCreateCounting(100, 0);
+  xSemaphore = xSemaphoreCreateCounting(10, 0);
 
   // task setup status
   Serial.printf("\ntask setup status:\n");
@@ -269,8 +269,8 @@ void setup()
   {
     if (setup.ioActive)
     {
-      // xTaskCreate(IOReadTask, "read-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIORead);
-      // xTaskCreate(IOWriteTask, "write-io", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleIOWrite);
+      // xTaskCreate(IOWriteTask, "write-io", TASK_STACK_SIZE, NULL, 1, &xHandleIOWrite);
+      // xTaskCreate(IOReadTask, "read-io", TASK_STACK_SIZE, NULL, 1, &xHandleIORead);
     }
 
     if (setup.i2cActive)
@@ -340,7 +340,7 @@ void setup()
     {
     };
   }
-  Serial.printf("\n\n|--- end setup ---|\n\n");
+  Serial.printf("\n|--- end setup ---|\n\n");
   // ---------------------------------------------------------------------------------------- //
 }
 
@@ -356,24 +356,24 @@ void setup()
  */
 void IOReadTask(void *pvParameters)
 {
+  // get task tick
+  TickType_t taskLastWakeTick = xTaskGetTickCount();
+
   for (;;)
   {
-    // // check for mutex availability
-    // if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
-    // {
-
-    //   // debugging
-    //   if (debugger.debugEnabled)
-    //   {
-    //     debugger.ioReadTaskCount++;
-    //   }
-
-    //   // release mutex!
-    //   xSemaphoreGive(xMutex);
-    // }
-
     // limit task refresh rate
-    vTaskDelay(IO_READ_REFRESH_RATE);
+    vTaskDelayUntil(&taskLastWakeTick, IO_READ_REFRESH_RATE);
+
+    // check for mutex availability
+    if (xSemaphoreTake(xSemaphore, (TickType_t)0))
+    {
+
+      // debugging
+      if (debugger.debugEnabled)
+      {
+        debugger.ioReadTaskCount++;
+      }
+    }
   }
 }
 
@@ -383,24 +383,24 @@ void IOReadTask(void *pvParameters)
  */
 void IOWriteTask(void *pvParameters)
 {
+  // get task tick
+  TickType_t taskLastWakeTick = xTaskGetTickCount();
+
   for (;;)
   {
-    // // check for mutex availability
-    // if (xSemaphoreTake(xMutex, (TickType_t)10) == pdTRUE)
-    // {
-
-    //   // debugging
-    //   if (debugger.debugEnabled)
-    //   {
-    //     debugger.ioWriteTaskCount++;
-    //   }
-
-    //   // release mutex!
-    //   xSemaphoreGive(xMutex);
-    // }
-
     // limit task refresh rate
-    vTaskDelay(IO_WRITE_REFRESH_RATE);
+    vTaskDelayUntil(&taskLastWakeTick, IO_WRITE_REFRESH_RATE);
+
+    // check for mutex availability
+    if (xSemaphoreTake(xSemaphore, (TickType_t)0))
+    {
+
+      // debugging
+      if (debugger.debugEnabled)
+      {
+        debugger.ioWriteTaskCount++;
+      }
+    }
   }
 }
 
