@@ -20,7 +20,7 @@
 ===========================================================
 */
 
-esp_pm_config_esp32_t power_configuration{
+esp_pm_config_esp32s3_t power_configuration{
     .max_freq_mhz = 240,
     .min_freq_mhz = 240,
     .light_sleep_enable = false,
@@ -32,13 +32,17 @@ esp_pm_config_esp32_t power_configuration{
 ===========================================================
 */
 
-// inputs
+// io
+#define POWER_BUTTON_PIN 0
+#define LOW_POWER_MODE_PIN 0
 
 // ic2
 #define I2C_SCL_PIN 19
 #define I2C_SDA_PIN 18
+#define I2C_POWER_TOGGLE -1
 
 // display
+#define DISPLAY_POWER_TOGGLE -1
 // #define TFT_SCK 27
 // #define TFT_MOSI 32
 // #define TFT_MISO 14

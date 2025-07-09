@@ -21,7 +21,7 @@
 /**
  * @brief all data about satellites
  */
-typedef struct SatelliteData
+typedef struct
 {
     bool active;
     int elevation;
@@ -32,7 +32,7 @@ typedef struct SatelliteData
 /**
  * @brief mini-gps data frame
  */
-typedef struct Data
+typedef struct
 {
     bool connected;
     bool wasConnected;
@@ -59,12 +59,12 @@ typedef struct Data
     long timeout;
 
     int numSats;
-} Data;
+} GpsDataType;
 
 /**
  * @brief debugger structure
  */
-typedef struct Debugger
+typedef struct
 {
     // debug toggle
     bool debugEnabled;
@@ -77,15 +77,13 @@ typedef struct Debugger
     String debugText;
 
     // scheduler data
-    unsigned long ioWriteTaskCount;
-    unsigned long ioReadTaskCount;
+    unsigned long ioTaskCount;
     unsigned long i2cTaskCount;
     unsigned long displayTaskCount;
 
     int displayRefreshRate;
 
-    unsigned long ioReadTaskPreviousCount;
-    unsigned long ioWriteTaskPreviousCount;
+    unsigned long ioTaskPreviousCount;
     unsigned long i2cTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
 } Debugger;
