@@ -19,8 +19,9 @@
 // core
 #include <Arduino.h>
 #include <vector>
-#include "rtc.h"
-#include "driver/rtc_io.h"
+// #include "rtc.h"
+// #include "driver/rtc_io.h"
+#include "FreeRTOS.h"
 
 // functionality
 #include "Wire.h"
@@ -135,7 +136,7 @@ bool lowPowerModeActive = false;
 SemaphoreHandle_t xSemaphore = NULL;
 
 // hardware timer
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+// portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // rtos task handles
 TaskHandle_t xHandleIO = NULL;

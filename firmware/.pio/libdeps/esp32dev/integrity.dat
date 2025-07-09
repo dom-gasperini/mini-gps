@@ -1,2 +1,4 @@
+feilipu/FreeRTOS@^11.1.0-3
 bodmer/TFT_eSPI@^2.5.43
+https://github.com/tsandmann/freertos-teensy.git
 adafruit/Adafruit GPS Library@^1.7.5

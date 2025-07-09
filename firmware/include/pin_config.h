@@ -12,7 +12,7 @@
 ===========================================================
 */
 
-#include <esp_pm.h>
+// #include <esp_pm.h>
 
 /*
 ===========================================================
@@ -20,11 +20,11 @@
 ===========================================================
 */
 
-esp_pm_config_esp32s3_t power_configuration{
-    .max_freq_mhz = 240,
-    .min_freq_mhz = 240,
-    .light_sleep_enable = false,
-};
+// esp_pm_config_esp32s3_t power_configuration{
+//     .max_freq_mhz = 240,
+//     .min_freq_mhz = 240,
+//     .light_sleep_enable = false,
+// };
 
 /*
 ===========================================================
