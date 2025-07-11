@@ -2,8 +2,8 @@
  * @file pin_config.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 2.0
- * @date 2024-06-08
+ * @version 4.0
+ * @date 2024-07-11
  */
 
 /*
@@ -33,19 +33,19 @@ esp_pm_config_esp32s3_t power_configuration{
 */
 
 // io
-#define POWER_BUTTON_PIN 0
-#define LOW_POWER_MODE_PIN 0
+#define POWER_BUTTON_PIN 3
+#define LOW_POWER_MODE_PIN 2
 
 // ic2
-#define I2C_SCL_PIN 19
-#define I2C_SDA_PIN 18
-#define I2C_POWER_TOGGLE -1
+#define I2C_SCL_PIN 22
+#define I2C_SDA_PIN 21
+#define I2C_POWER_TOGGLE 23
 
 // display
-#define DISPLAY_POWER_TOGGLE -1
-// #define TFT_SCK 27
-// #define TFT_MOSI 32
-// #define TFT_MISO 14
-// #define TFT_CS 33
-// #define TFT_DC 25
-// #define TFT_RESET 26
+#define DISPLAY_POWER_TOGGLE 7
+#define SPI_SCLK_PIN 10
+#define SPI_MOSI_PIN 11
+#define SPI_MISO_PIN 12
+#define SPI_CS_PIN 9
+#define SPI_DC_PIN 8
+#define SPI_RESET_PIN 6

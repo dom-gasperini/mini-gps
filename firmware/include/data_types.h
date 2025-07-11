@@ -2,8 +2,8 @@
  * @file data_types.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 2.0
- * @date 2024-06-08
+ * @version 4.0
+ * @date 2024-07-11
  */
 
 /*
