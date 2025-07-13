@@ -53,7 +53,7 @@
 #define GPS_CORE 0
 #define DISPLAY_CORE 1
 #define IO_REFRESH_RATE 100      // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 10      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 20      // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DISPLAY_REFRESH_RATE 100 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
@@ -131,7 +131,8 @@ int displayRefreshCounter = 0;
 int powerButtonCounter = 0;
 bool enableDisplayPower = true;
 bool enableGpsPower = true;
-bool lowPowerModeActive = false;
+bool sleepModeEnable = false;
+bool lowBatteryModeEnable = false;
 
 // semaphore
 SemaphoreHandle_t xSemaphore = NULL;
@@ -494,32 +495,42 @@ void DisplayTask(void *pvParameters)
       // copy gps data
       gpsDataCopy = data;
 
+      // --- low battery logic --- //
+      if (digitalRead(LOW_POWER_MODE_PIN) == LOW)
+      {
+        // lowBatteryModeEnable = true;
+      }
+      // --- low battery logic --- //
+
       // --- deep sleep logic --- //
       powerButtonCounter = (digitalRead(POWER_BUTTON_PIN) == LOW) ? powerButtonCounter++ : 0;
-      if (powerButtonCounter >= IO_REFRESH_RATE * 10)
+      sleepModeEnable = (powerButtonCounter >= DISPLAY_REFRESH_RATE * 10) ? true : false;
+
+      enableGpsPower = !sleepModeEnable;
+      enableDisplayPower = !sleepModeEnable;
+      // --- deep sleep logic --- //
+
+      // --- update power distribution --- //
+      digitalWrite(I2C_POWER_TOGGLE, (enableGpsPower && !lowBatteryModeEnable));
+      digitalWrite(DISPLAY_POWER_TOGGLE, enableDisplayPower);
+
+      if (sleepModeEnable)
       {
         esp_deep_sleep_start();
       }
-
-      lowPowerModeActive = (digitalRead(LOW_POWER_MODE_PIN) == LOW);
-      enableGpsPower = !lowPowerModeActive;
-      enableDisplayPower = !lowPowerModeActive;
-
-      digitalWrite(I2C_POWER_TOGGLE, enableGpsPower);
-      digitalWrite(DISPLAY_POWER_TOGGLE, enableDisplayPower);
-      // --- deep sleep logic --- //
+      // --- update power distribution --- //
     }
 
     // update display
-    // if (!lowPowerModeActive)
-    // {
-    DisplayGpsData(gpsDataCopy);
-    ActivityAnimation(gpsDataCopy);
-    // }
-    // else
-    // {
-    //   DisplayLowPowerMode();
-    // }
+    if (!sleepModeEnable)
+    {
+      DisplayGpsData(gpsDataCopy);
+      ActivityAnimation(gpsDataCopy);
+    }
+    else
+    {
+      DisplayLowPowerMode();
+    }
 
     // debugging
     if (debugger.debugEnabled)
@@ -919,6 +930,9 @@ void DisplayGpsData(GpsDataType dataCopy)
  */
 void DisplayLowPowerMode()
 {
+  tft.setTextColor(ILI9341_RED);
+  tft.setCursor(100, 100);
+  tft.printf("battery low!");
 }
 
 /*

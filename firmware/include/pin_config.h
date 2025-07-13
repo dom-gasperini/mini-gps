@@ -42,7 +42,7 @@ esp_pm_config_esp32s3_t power_configuration{
 #define I2C_POWER_TOGGLE 23
 
 // display
-#define DISPLAY_POWER_TOGGLE 7
+#define DISPLAY_POWER_TOGGLE 4
 #define SPI_SCLK_PIN 10
 #define SPI_MOSI_PIN 11
 #define SPI_MISO_PIN 12
