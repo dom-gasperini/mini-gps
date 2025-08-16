@@ -33,8 +33,9 @@ esp_pm_config_esp32s3_t power_configuration{
 */
 
 // io
-#define POWER_BUTTON_PIN 3
-#define LOW_POWER_MODE_PIN 2
+#define POWER_BUTTON_PIN 19
+#define POWER_BUTTON_LED 18
+#define LOW_POWER_MODE_PIN 3
 
 // ic2
 #define I2C_POWER_TOGGLE 23

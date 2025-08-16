@@ -195,14 +195,24 @@ void setup()
 
   // -------------------------- initialize GPIO ------------------------------ //
   // inputs
+  pinMode(SPI_CS_PIN, OUTPUT);
   // pinMode(POWER_BUTTON_PIN, INPUT);
-  // esp_sleep_enable_ext0_wakeup((gpio_num_t)POWER_BUTTON_PIN, LOW);
-  // rtc_gpio_pullup_dis((gpio_num_t)POWER_BUTTON_PIN);
+
+  esp_sleep_enable_ext1_wakeup((gpio_num_t)POWER_BUTTON_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
+  rtc_gpio_pullup_dis((gpio_num_t)POWER_BUTTON_PIN);
+  rtc_gpio_pulldown_en((gpio_num_t)POWER_BUTTON_PIN);
+
+  // rtc_gpio_pullup_en((gpio_num_t)POWER_BUTTON_PIN);
   // rtc_gpio_pulldown_en((gpio_num_t)POWER_BUTTON_PIN);
 
   // outputs
+  pinMode(POWER_BUTTON_LED, OUTPUT);
   pinMode(I2C_POWER_TOGGLE, OUTPUT);
   pinMode(DISPLAY_POWER_TOGGLE, OUTPUT);
+
+  digitalWrite(I2C_POWER_TOGGLE, HIGH);
+  digitalWrite(DISPLAY_POWER_TOGGLE, HIGH);
+  digitalWrite(POWER_BUTTON_LED, HIGH);
 
   Serial.printf("gpio init [ success ]\n");
   setup.ioActive = true;
@@ -210,7 +220,6 @@ void setup()
 
   // -------------------------- initialize display --------------------------- //
   hspi->begin(SPI_SCLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, SPI_CS_PIN);
-  pinMode(SPI_CS_PIN, OUTPUT);
 
   tft.begin();
   tft.setRotation(3);
@@ -476,21 +485,40 @@ void DisplayTask(void *pvParameters)
       // --- low battery logic --- //
 
       // --- deep sleep logic --- //
+      if (digitalRead(POWER_BUTTON_PIN) == LOW)
+      {
+        powerButtonCounter++;
+      }
+      else
+      {
+        powerButtonCounter = 0;
+      }
+
+      if (powerButtonCounter >= 10)
+      {
+        sleepModeEnable = !sleepModeEnable;
+        digitalWrite(POWER_BUTTON_LED, sleepModeEnable);
+      }
+
       // powerButtonCounter = (digitalRead(POWER_BUTTON_PIN) == LOW) ? powerButtonCounter++ : 0;
-      // sleepModeEnable = (powerButtonCounter >= DISPLAY_REFRESH_RATE * 10) ? true : false;
+      // sleepModeEnable = (powerButtonCounter >= 10) ? true : false;
 
-      // enableGpsPower = !sleepModeEnable;
-      // enableDisplayPower = !sleepModeEnable;
-      // // --- deep sleep logic --- //
+      enableGpsPower = !sleepModeEnable;
+      enableDisplayPower = !sleepModeEnable;
+      // --- deep sleep logic --- //
 
-      // // --- update power distribution --- //
-      // digitalWrite(I2C_POWER_TOGGLE, (enableGpsPower && !lowBatteryModeEnable));
-      // digitalWrite(DISPLAY_POWER_TOGGLE, enableDisplayPower);
+      // --- update power distribution --- //
 
-      // if (sleepModeEnable)
-      // {
-      //   esp_deep_sleep_start();
-      // }
+      if (sleepModeEnable)
+      {
+        // while (digitalRead(POWER_BUTTON_PIN) == LOW)
+        // {
+        // }
+
+        digitalWrite(I2C_POWER_TOGGLE, (enableGpsPower));
+        digitalWrite(DISPLAY_POWER_TOGGLE, enableDisplayPower);
+        esp_deep_sleep_start();
+      }
       // --- update power distribution --- //
     }
 
@@ -905,6 +933,7 @@ void DisplayGpsData(GpsDataType dataCopy)
 void DisplayLowPowerMode()
 {
   tft.setTextColor(ILI9341_RED);
+  tft.setTextSize(4);
   tft.setCursor(100, 100);
   tft.printf("battery low!");
 }
