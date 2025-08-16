@@ -1,12 +1,12 @@
-# mini-gps
+# mini gps
 
 a gps location device
 
 ## details
 
-- down to 3 meters of precision
-- realtime determination of velocity accurate to 0.1 knots
-- powered by 2 AA batteries (8-10 hours of battery)
+- 3 meters precision
+- 5Hz fix update rate
+- LiIo (8 hours of battery)
 
 ## hardware
 
@@ -17,15 +17,14 @@ a gps location device
 ## software
 
 - FreeRTOS
-- TFT_eSPI
+- Adafruit GFZ Library
 - Adafruit GPS Library
 
 ## todo:
 
 ### hardware
 
-- consider different display
-- apply power supply upgrade
+- different display
 
 ### gui
 
