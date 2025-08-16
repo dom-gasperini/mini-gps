@@ -96,7 +96,7 @@ GpsDataType data = {
     .numSats = 0,
 };
 
-Debugger debugger = {
+DebuggerType debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
     .i2c_debugEnabled = false,
@@ -122,7 +122,6 @@ TwoWire I2CGPS = TwoWire(0);
 Adafruit_GPS gps(&I2CGPS);
 
 // display
-static const int spiClk = 240000000; // 1 MHz
 SPIClass *hspi = new SPIClass(HSPI);
 Adafruit_ILI9341 tft(hspi, SPI_DC_PIN, SPI_RESET_PIN);
 int displayRefreshCounter = 0;
@@ -183,19 +182,16 @@ void setup()
     vTaskDelay(3000);
   }
 
-  // setup managment struct
-  struct setup
-  {
-    bool ioActive = false;
-    bool displayActive = false;
-    bool gpsActive = false;
+  InitDeviceType setup = {
+      .ioActive = false,
+      .displayActive = false,
+      .gpsActive = false,
   };
-  setup setup;
 
-  // --------------------------- initialize serial  --------------------------- //
+  // --------------------------- initialize serial  -------------------------- //
   Serial.begin(9600);
   Serial.printf("\n\n|--- starting setup ---|\n\n");
-  // -------------------------------------------------------------------------- //
+  // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPIO ------------------------------ //
   // inputs
@@ -210,11 +206,10 @@ void setup()
 
   Serial.printf("gpio init [ success ]\n");
   setup.ioActive = true;
-  // -------------------------------------------------------------------------- //
+  // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize display --------------------------- //
   hspi->begin(SPI_SCLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, SPI_CS_PIN);
-
   pinMode(SPI_CS_PIN, OUTPUT);
 
   tft.begin();
@@ -241,7 +236,7 @@ void setup()
   // set gps i2c baud rate
   gps.sendCommand(PMTK_SET_BAUD_115200);
 
-  // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
+  // filter
   gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
   // set gps to mcu update rate
@@ -257,12 +252,8 @@ void setup()
   setup.gpsActive = true;
   // -------------------------------------------------------------------------- //
 
-  Serial.printf("\n|--- end setup ---|\n");
-  // --------------------------------------------------------------------------- //
-
-  // ------------------------------- scheduler & task status --------------------------------- //
-  // init mutex and semaphore
-  xMutex = xSemaphoreCreateMutex();
+  // ----------------------- scheduler & task status -------------------------- //
+  // init semaphore
   xSemaphore = xSemaphoreCreateCounting(100, 0);
 
   // task setup status
@@ -272,7 +263,7 @@ void setup()
   Serial.printf("display task setup %s\n", setup.displayActive ? "complete" : "failed");
 
   // start tasks
-  if (xSemaphore != NULL && xMutex != NULL)
+  if (xSemaphore != NULL)
   {
     if (setup.ioActive)
     {
@@ -342,7 +333,7 @@ void setup()
     };
   }
   Serial.printf("\n|--- end setup ---|\n\n");
-  // ---------------------------------------------------------------------------------------- //
+  // -------------------------------------------------------------------------- //
 }
 
 /*

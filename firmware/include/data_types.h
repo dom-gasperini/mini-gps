@@ -19,6 +19,16 @@
 */
 
 /**
+ * @brief setup managment struct
+ */
+typedef struct
+{
+    bool ioActive;
+    bool displayActive;
+    bool gpsActive;
+} InitDeviceType;
+
+/**
  * @brief all data about satellites
  */
 typedef struct
@@ -27,7 +37,7 @@ typedef struct
     int elevation;
     int azimuth;
     int snr;
-} SatelliteData;
+} SatelliteDataType;
 
 /**
  * @brief mini-gps data frame
@@ -86,7 +96,7 @@ typedef struct
     unsigned long ioTaskPreviousCount;
     unsigned long i2cTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
-} Debugger;
+} DebuggerType;
 
 // debug functions
 void PrintDebug();
