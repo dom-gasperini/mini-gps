@@ -1,12 +1,12 @@
 /**
  * @file main.cpp
  * @author dom gasperini
- * @brief mini-gps
- * @version 4.0
- * @date 2025-07-11
+ * @brief mini gps
+ * @version 4.1
+ * @date 2025-08-16
  *
  * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
- * @ref https://docs.arduino.cc/resources/pinouts/ABX00083-full-pinout.pdf         (pinout & overview)
+ * @ref https://docs.arduino.cc/resources/pinouts/ABX00083-full-pinout.pdf                                             (pinout & overview)
  * @ref https://github.com/adafruit/Adafruit_GPS                                                                       (gps library)
  */
 
@@ -53,7 +53,7 @@
 #define GPS_CORE 0
 #define DISPLAY_CORE 1
 #define IO_REFRESH_RATE 100      // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 20      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define I2C_REFRESH_RATE 10      // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DISPLAY_REFRESH_RATE 100 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
@@ -198,12 +198,11 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPIO ------------------------------ //
-
   // inputs
-  pinMode(POWER_BUTTON_PIN, INPUT);
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)POWER_BUTTON_PIN, LOW);
-  rtc_gpio_pullup_dis((gpio_num_t)POWER_BUTTON_PIN);
-  rtc_gpio_pulldown_en((gpio_num_t)POWER_BUTTON_PIN);
+  // pinMode(POWER_BUTTON_PIN, INPUT);
+  // esp_sleep_enable_ext0_wakeup((gpio_num_t)POWER_BUTTON_PIN, LOW);
+  // rtc_gpio_pullup_dis((gpio_num_t)POWER_BUTTON_PIN);
+  // rtc_gpio_pulldown_en((gpio_num_t)POWER_BUTTON_PIN);
 
   // outputs
   pinMode(I2C_POWER_TOGGLE, OUTPUT);
@@ -211,17 +210,6 @@ void setup()
 
   Serial.printf("gpio init [ success ]\n");
   setup.ioActive = true;
-  // -------------------------------------------------------------------------- //
-
-  // ----------------------- initialize I2C connection --------------------- //
-  if (I2CGPS.begin(I2C_SCL_PIN, I2C_SDA_PIN, I2C_FREQUENCY) == true)
-  {
-    Serial.printf("i2c bus init [ success ]\n");
-  }
-  else
-  {
-    Serial.printf("i2c bus init [ failed ]\n");
-  }
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize display --------------------------- //
@@ -237,7 +225,7 @@ void setup()
   tft.setTextSize(3);
   tft.setTextColor(ILI9341_RED);
   tft.setCursor(0, 0);
-  tft.printf("mini-gps:");
+  tft.printf("mini gps:");
 
   // outline boxes
   tft.drawRect(0, 25, 320, 155, ILI9341_DARKCYAN);
@@ -248,31 +236,25 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  if (gps.begin(I2C_GPS_ADDR) == 0)
-  {
-    // set gps i2c baud rate
-    gps.sendCommand(PMTK_SET_BAUD_115200);
+  gps.begin(I2C_GPS_ADDR);
 
-    // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
-    gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  // set gps i2c baud rate
+  gps.sendCommand(PMTK_SET_BAUD_115200);
 
-    // set gps to mcu update rate
-    gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+  // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
+  gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
-    // set gps position fix rate
-    gps.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
+  // set gps to mcu update rate
+  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
 
-    // request updates on antenna status (don't need this on)
-    // gps.sendCommand(PGCMD_ANTENNA);
+  // set gps position fix rate
+  gps.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
 
-    Serial.printf("gps init [ success ]\n");
-    setup.gpsActive = true;
-  }
-  else
-  {
-    Serial.printf("gps init [ failed ]\n");
-  }
+  // request updates on antenna status (don't need this on)
+  // gps.sendCommand(PGCMD_ANTENNA);
 
+  Serial.printf("gps init [ success ]\n");
+  setup.gpsActive = true;
   // -------------------------------------------------------------------------- //
 
   Serial.printf("\n|--- end setup ---|\n");
@@ -281,7 +263,7 @@ void setup()
   // ------------------------------- scheduler & task status --------------------------------- //
   // init mutex and semaphore
   xMutex = xSemaphoreCreateMutex();
-  xSemaphore = xSemaphoreCreateCounting(10, 0);
+  xSemaphore = xSemaphoreCreateCounting(100, 0);
 
   // task setup status
   Serial.printf("\ntask setup status:\n");
@@ -441,8 +423,8 @@ void I2CTask(void *pvParameters)
           }
           else
           {
-            data.speed = 0;
-            data.angle = 0;
+            data.speed = 0.0f;
+            data.angle = 0.0f;
           }
 
           // collect date data
@@ -503,34 +485,34 @@ void DisplayTask(void *pvParameters)
       // --- low battery logic --- //
 
       // --- deep sleep logic --- //
-      powerButtonCounter = (digitalRead(POWER_BUTTON_PIN) == LOW) ? powerButtonCounter++ : 0;
-      sleepModeEnable = (powerButtonCounter >= DISPLAY_REFRESH_RATE * 10) ? true : false;
+      // powerButtonCounter = (digitalRead(POWER_BUTTON_PIN) == LOW) ? powerButtonCounter++ : 0;
+      // sleepModeEnable = (powerButtonCounter >= DISPLAY_REFRESH_RATE * 10) ? true : false;
 
-      enableGpsPower = !sleepModeEnable;
-      enableDisplayPower = !sleepModeEnable;
-      // --- deep sleep logic --- //
+      // enableGpsPower = !sleepModeEnable;
+      // enableDisplayPower = !sleepModeEnable;
+      // // --- deep sleep logic --- //
 
-      // --- update power distribution --- //
-      digitalWrite(I2C_POWER_TOGGLE, (enableGpsPower && !lowBatteryModeEnable));
-      digitalWrite(DISPLAY_POWER_TOGGLE, enableDisplayPower);
+      // // --- update power distribution --- //
+      // digitalWrite(I2C_POWER_TOGGLE, (enableGpsPower && !lowBatteryModeEnable));
+      // digitalWrite(DISPLAY_POWER_TOGGLE, enableDisplayPower);
 
-      if (sleepModeEnable)
-      {
-        esp_deep_sleep_start();
-      }
+      // if (sleepModeEnable)
+      // {
+      //   esp_deep_sleep_start();
+      // }
       // --- update power distribution --- //
     }
 
     // update display
-    if (!sleepModeEnable)
-    {
-      DisplayGpsData(gpsDataCopy);
-      ActivityAnimation(gpsDataCopy);
-    }
-    else
-    {
-      DisplayLowPowerMode();
-    }
+    // if (!sleepModeEnable)
+    // {
+    DisplayGpsData(gpsDataCopy);
+    ActivityAnimation(gpsDataCopy);
+    // }
+    // else
+    // {
+    //   DisplayLowPowerMode();
+    // }
 
     // debugging
     if (debugger.debugEnabled)
@@ -769,9 +751,10 @@ void ActivityAnimation(GpsDataType gpsDataCopy)
 void DisplayGpsData(GpsDataType dataCopy)
 {
   // location
+  int minSats = 3;
   tft.setTextSize(2);
   tft.setTextColor(ILI9341_CYAN, ILI9341_BLACK);
-  if (dataCopy.numSats >= 3)
+  if (dataCopy.numSats >= minSats)
   {
     tft.setCursor(5, 30);
     tft.printf("latitude: %.5f", dataCopy.latitude);
@@ -797,7 +780,7 @@ void DisplayGpsData(GpsDataType dataCopy)
   // speed
   tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
   tft.setCursor(5, 95);
-  if (dataCopy.numSats > 3)
+  if (dataCopy.numSats > minSats)
   {
     tft.printf("speed: %.1f mph", dataCopy.speed);
   }
@@ -809,7 +792,7 @@ void DisplayGpsData(GpsDataType dataCopy)
   // angle
   tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
   tft.setCursor(5, 115);
-  if (dataCopy.speed > 0.5)
+  if (dataCopy.speed > MIN_SPEED)
   {
     tft.printf("heading: %d deg", (int)dataCopy.angle);
   }
@@ -847,11 +830,11 @@ void DisplayGpsData(GpsDataType dataCopy)
   {
     tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
   }
-  if (dataCopy.numSats > 0 && dataCopy.numSats <= 3)
+  if (dataCopy.numSats > 0 && dataCopy.numSats <= minSats)
   {
     tft.setTextColor(ILI9341_ORANGE, ILI9341_BLACK);
   }
-  if (dataCopy.numSats > 3)
+  if (dataCopy.numSats > minSats)
   {
     tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
   }

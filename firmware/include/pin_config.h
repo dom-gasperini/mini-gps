@@ -37,8 +37,6 @@ esp_pm_config_esp32s3_t power_configuration{
 #define LOW_POWER_MODE_PIN 2
 
 // ic2
-#define I2C_SCL_PIN 22
-#define I2C_SDA_PIN 21
 #define I2C_POWER_TOGGLE 23
 
 // display

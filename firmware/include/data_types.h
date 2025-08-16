@@ -2,8 +2,8 @@
  * @file data_types.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 4.0
- * @date 2024-07-11
+ * @version 4.1
+ * @date 2024-08-16
  */
 
 /*
@@ -58,7 +58,7 @@ typedef struct
     int second;
     long timeout;
 
-    int numSats;
+    uint8_t numSats;
 } GpsDataType;
 
 /**
