@@ -60,7 +60,7 @@
 #define TASK_STACK_SIZE 4096 // in bytes
 
 // debugging
-#define ENABLE_DEBUGGING true
+#define ENABLE_DEBUGGING false
 
 /*
 ===============================================================================================
@@ -219,7 +219,7 @@ void setup()
   hspi->begin(SPI_SCLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, SPI_CS_PIN);
 
   tft.begin();
-  tft.setRotation(3);
+  tft.setRotation(1);
 
   // display gps information
   DisplayInitGUI();
@@ -380,59 +380,57 @@ void I2CTask(void *pvParameters)
     if (xSemaphoreGive(xSemaphore))
     {
       // if there is no data ping the gps module
-      if (sleepModeEnable == false && gps.read() == 0)
+      if (sleepModeEnable == false)
       {
-        gps.sendCommand("x");
-      }
-
-      // read gps data
-      while (gps.read() != 0)
-      {
-        // process gps data
-        if (gps.newNMEAreceived() == true)
+        // read gps data
+        while (gps.read() != 0)
         {
-          gps.parse(gps.lastNMEA()); // this sets the newNMEAreceived() flag to false
-
-          // connection data
-          data.connected = gps.fix;
-          data.fixQuality = gps.fixquality;
-
-          data.numSats = gps.satellites;
-          data.dtLastFix = gps.secondsSinceFix();
-          data.dtSinceTime = gps.secondsSinceTime();
-          data.dtSinceTime = gps.secondsSinceDate();
-
-          // collect location data
-          data.latitude = gps.latitudeDegrees;
-          data.longitude = gps.longitudeDegrees;
-          data.altitude = gps.altitude;
-
-          // collect vector data
-          data.speed = gps.speed; // speed is given in knots
-          data.angle = gps.angle;
-
-          // not enough resolution for accurately measuring very low speeds
-          if (data.speed > MIN_SPEED)
+          // process gps data
+          if (gps.newNMEAreceived() == true)
           {
-            data.speed = data.speed * KNOTS_TO_MPH; // convert to mph
+            gps.parse(gps.lastNMEA()); // this sets the newNMEAreceived() flag to false
+
+            // connection data
+            data.connected = gps.fix;
+            data.fixQuality = gps.fixquality;
+
+            data.numSats = gps.satellites;
+            data.dtLastFix = gps.secondsSinceFix();
+            data.dtSinceTime = gps.secondsSinceTime();
+            data.dtSinceTime = gps.secondsSinceDate();
+
+            // collect location data
+            data.latitude = gps.latitudeDegrees;
+            data.longitude = gps.longitudeDegrees;
+            data.altitude = gps.altitude;
+
+            // collect vector data
+            data.speed = gps.speed; // speed is given in knots
+            data.angle = gps.angle;
+
+            // not enough resolution for accurately measuring very low speeds
+            if (data.speed > MIN_SPEED)
+            {
+              data.speed = data.speed * KNOTS_TO_MPH; // convert to mph
+            }
+            else
+            {
+              data.speed = 0.0f;
+              data.angle = 0.0f;
+            }
+
+            // collect date data
+            data.year = gps.year + 2000;
+            data.month = gps.month;
+            data.day = gps.day;
+
+            // collect time data
+            data.hour = gps.hour;
+            data.minute = gps.minute;
+            data.second = gps.seconds;
+
+            data.validDate = IsValidDate();
           }
-          else
-          {
-            data.speed = 0.0f;
-            data.angle = 0.0f;
-          }
-
-          // collect date data
-          data.year = gps.year + 2000;
-          data.month = gps.month;
-          data.day = gps.day;
-
-          // collect time data
-          data.hour = gps.hour;
-          data.minute = gps.minute;
-          data.second = gps.seconds;
-
-          data.validDate = IsValidDate();
         }
       }
 
@@ -440,6 +438,10 @@ void I2CTask(void *pvParameters)
       if (debugger.debugEnabled)
       {
         debugger.i2cTaskCount++;
+
+        char c = gps.read();
+        if (c)
+          Serial.print(c);
       }
     }
   }
@@ -485,7 +487,7 @@ void DisplayTask(void *pvParameters)
         powerButtonCounter = 0;
       }
 
-      if (powerButtonCounter >= 10)
+      if (powerButtonCounter >= 25)
       {
         if (sleepModeEnable == false)
         {
@@ -502,11 +504,12 @@ void DisplayTask(void *pvParameters)
 
         esp_light_sleep_start();
       }
-      else if (sleepModeEnable == true && powerButtonCounter > 0 && powerButtonCounter < 10)
+      else if (sleepModeEnable == true && powerButtonCounter > 5 && powerButtonCounter < 25)
       {
         DisplayInitGUI();
 
         sleepModeEnable = false;
+        gps.sendCommand("x");
         digitalWrite(POWER_BUTTON_LED, !sleepModeEnable);
         digitalWrite(DISPLAY_POWER_TOGGLE, !sleepModeEnable);
       }
@@ -624,7 +627,15 @@ String TaskStateToString(eTaskState state)
  */
 bool IsValidDate()
 {
-  return (data.year >= INIT_OPERATING_YEAR) ? true : false;
+  if (data.year >= INIT_OPERATING_YEAR)
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+  // return (data.year >= INIT_OPERATING_YEAR) ? true : false;
 }
 
 /**
