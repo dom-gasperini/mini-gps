@@ -42,12 +42,12 @@
 // i2c
 #define I2C_FREQUENCY 115200
 #define I2C_GPS_ADDR 0x10
+#define GPS_STANDBY_COMMAND "$PMTK161, 0 * 28"
 
 // general
 #define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
 #define MIN_SPEED 2.00         // minimum number of knots before displaying speed to due resolution limitations
-#define FINAL_VALID_OPERATING_YEAR 2080
-#define START_VALID_OPERATING_YEAR 2024
+#define INIT_OPERATING_YEAR 2024
 
 // tasks
 #define GPS_CORE 0
@@ -164,6 +164,7 @@ bool IsValidDate();
 void ActivityAnimation(GpsDataType gpsData);
 void DisplayGpsData(GpsDataType gpsData);
 void DisplayLowPowerMode();
+void DisplayInitGUI();
 
 /*
 ===============================================================================================
@@ -196,14 +197,10 @@ void setup()
   // -------------------------- initialize GPIO ------------------------------ //
   // inputs
   pinMode(SPI_CS_PIN, OUTPUT);
-  // pinMode(POWER_BUTTON_PIN, INPUT);
+  pinMode(POWER_BUTTON_PIN, INPUT);
 
-  esp_sleep_enable_ext1_wakeup((gpio_num_t)POWER_BUTTON_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
-  rtc_gpio_pullup_dis((gpio_num_t)POWER_BUTTON_PIN);
-  rtc_gpio_pulldown_en((gpio_num_t)POWER_BUTTON_PIN);
-
-  // rtc_gpio_pullup_en((gpio_num_t)POWER_BUTTON_PIN);
-  // rtc_gpio_pulldown_en((gpio_num_t)POWER_BUTTON_PIN);
+  gpio_wakeup_enable((gpio_num_t)POWER_BUTTON_PIN, GPIO_INTR_LOW_LEVEL);
+  esp_sleep_enable_gpio_wakeup();
 
   // outputs
   pinMode(POWER_BUTTON_LED, OUTPUT);
@@ -225,15 +222,7 @@ void setup()
   tft.setRotation(3);
 
   // display gps information
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setTextSize(3);
-  tft.setTextColor(ILI9341_RED);
-  tft.setCursor(0, 0);
-  tft.printf("mini gps:");
-
-  // outline boxes
-  tft.drawRect(0, 25, 320, 155, ILI9341_DARKCYAN);
-  tft.drawRect(0, 185, 320, 55, ILI9341_MAGENTA);
+  DisplayInitGUI();
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
@@ -390,6 +379,12 @@ void I2CTask(void *pvParameters)
 
     if (xSemaphoreGive(xSemaphore))
     {
+      // if there is no data ping the gps module
+      if (sleepModeEnable == false && gps.read() == 0)
+      {
+        gps.sendCommand("x");
+      }
+
       // read gps data
       while (gps.read() != 0)
       {
@@ -478,13 +473,9 @@ void DisplayTask(void *pvParameters)
       gpsDataCopy = data;
 
       // --- low battery logic --- //
-      if (digitalRead(LOW_POWER_MODE_PIN) == LOW)
-      {
-        // lowBatteryModeEnable = true;
-      }
       // --- low battery logic --- //
 
-      // --- deep sleep logic --- //
+      // --- sleep logic --- //
       if (digitalRead(POWER_BUTTON_PIN) == LOW)
       {
         powerButtonCounter++;
@@ -496,42 +487,38 @@ void DisplayTask(void *pvParameters)
 
       if (powerButtonCounter >= 10)
       {
-        sleepModeEnable = !sleepModeEnable;
-        digitalWrite(POWER_BUTTON_LED, sleepModeEnable);
+        if (sleepModeEnable == false)
+        {
+          DisplayLowPowerMode();
+        }
+
+        sleepModeEnable = true;
+        digitalWrite(POWER_BUTTON_LED, !sleepModeEnable);
+
+        // gps
+        gps.sendCommand(GPS_STANDBY_COMMAND);
+
+        digitalWrite(DISPLAY_POWER_TOGGLE, !sleepModeEnable);
+
+        esp_light_sleep_start();
       }
-
-      // powerButtonCounter = (digitalRead(POWER_BUTTON_PIN) == LOW) ? powerButtonCounter++ : 0;
-      // sleepModeEnable = (powerButtonCounter >= 10) ? true : false;
-
-      enableGpsPower = !sleepModeEnable;
-      enableDisplayPower = !sleepModeEnable;
-      // --- deep sleep logic --- //
-
-      // --- update power distribution --- //
-
-      if (sleepModeEnable)
+      else if (sleepModeEnable == true && powerButtonCounter > 0 && powerButtonCounter < 10)
       {
-        // while (digitalRead(POWER_BUTTON_PIN) == LOW)
-        // {
-        // }
+        DisplayInitGUI();
 
-        digitalWrite(I2C_POWER_TOGGLE, (enableGpsPower));
-        digitalWrite(DISPLAY_POWER_TOGGLE, enableDisplayPower);
-        esp_deep_sleep_start();
+        sleepModeEnable = false;
+        digitalWrite(POWER_BUTTON_LED, !sleepModeEnable);
+        digitalWrite(DISPLAY_POWER_TOGGLE, !sleepModeEnable);
       }
-      // --- update power distribution --- //
+      // --- sleep logic --- //
     }
 
     // update display
-    // if (!sleepModeEnable)
-    // {
-    DisplayGpsData(gpsDataCopy);
-    ActivityAnimation(gpsDataCopy);
-    // }
-    // else
-    // {
-    //   DisplayLowPowerMode();
-    // }
+    if (!sleepModeEnable)
+    {
+      DisplayGpsData(gpsDataCopy);
+      ActivityAnimation(gpsDataCopy);
+    }
 
     // debugging
     if (debugger.debugEnabled)
@@ -633,19 +620,11 @@ String TaskStateToString(eTaskState state)
 }
 
 /**
- * @brief determine if the real-time clock is cold started or warm started
+ * @brief determine if the real-time clock data is valid
  */
 bool IsValidDate()
 {
-  // test for valid year data
-  if (data.year >= FINAL_VALID_OPERATING_YEAR || data.year < START_VALID_OPERATING_YEAR)
-  {
-    return false; // gps indicating invalid operating year
-  }
-  else
-  {
-    return true;
-  }
+  return (data.year >= INIT_OPERATING_YEAR) ? true : false;
 }
 
 /**
@@ -932,10 +911,28 @@ void DisplayGpsData(GpsDataType dataCopy)
  */
 void DisplayLowPowerMode()
 {
+  tft.fillScreen(ILI9341_BLACK);
+
+  tft.setTextSize(2);
   tft.setTextColor(ILI9341_RED);
-  tft.setTextSize(4);
-  tft.setCursor(100, 100);
-  tft.printf("battery low!");
+  tft.setCursor(75, 100);
+  tft.printf("[ sleep mode ]");
+}
+
+/**
+ *
+ */
+void DisplayInitGUI()
+{
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextSize(3);
+  tft.setTextColor(ILI9341_RED);
+  tft.setCursor(0, 0);
+  tft.printf("mini gps:");
+
+  // outline boxes
+  tft.drawRect(0, 25, 320, 155, ILI9341_DARKCYAN);
+  tft.drawRect(0, 185, 320, 55, ILI9341_MAGENTA);
 }
 
 /*
