@@ -5,9 +5,10 @@
  * @version 5.0
  * @date 2025-08-18
  *
- * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
- * @ref https://docs.arduino.cc/resources/pinouts/ABX00083-full-pinout.pdf                                             (pinout & overview)
- * @ref https://github.com/adafruit/Adafruit_GPS                                                                       (gps library)
+ * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather Docs)
+ * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module Docs)
+ * @ref https://github.com/adafruit/Adafruit_GPS                              (gps library)
+ * @ref https://github.com/adafruit/Adafruit-GFX-Library                      (graphics library)
  */
 
 /*
