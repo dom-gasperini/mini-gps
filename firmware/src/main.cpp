@@ -185,7 +185,6 @@ DebuggerType debugger = {
 
 // Non-voltile storage
 Preferences wpStorage;
-WaypointCoordinatesType wpVector = {};
 
 // battery management
 Adafruit_MAX17048 batteryModule; // hardware dedicated
