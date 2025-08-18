@@ -1,7 +1,7 @@
 .pio/build/arduino_nano_esp32/FrameworkArduino/USBMSC.cpp.o: \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/USBMSC.cpp \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/USBMSC.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_opi/include/sdkconfig.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_qspi/include/sdkconfig.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-tinyusb.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/include/esp_system.h \
@@ -93,7 +93,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-uart.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/uart_types.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-gpio.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/arduino_nano_nora/pins_arduino.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/adafruit_feather_esp32s3_reversetft/pins_arduino.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-touch.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-dac.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/include/driver/gpio.h \

@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief mini gps
- * @version 4.1
- * @date 2025-08-16
+ * @version 5.0
+ * @date 2025-08-18
  *
  * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
  * @ref https://docs.arduino.cc/resources/pinouts/ABX00083-full-pinout.pdf                                             (pinout & overview)
@@ -18,16 +18,16 @@
 
 // core
 #include <Arduino.h>
-#include <vector>
 #include "rtc.h"
-#include "driver/rtc_io.h"
 #include <SPI.h>
-
-// functionality
 #include "Wire.h"
-#include <Adafruit_GPS.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_ILI9341.h>
+#include <vector>
+
+// hardware specific
+#include <Adafruit_GPS.h>      // gps parsing library
+#include <Adafruit_GFX.h>      // graphics library
+#include <Adafruit_ST7789.h>   // display driver library
+#include <Adafruit_MAX1704X.h> // battery managment chip library
 
 // custom
 #include <data_types.h>
@@ -43,14 +43,21 @@
 #define I2C_FREQUENCY 115200
 #define I2C_GPS_ADDR 0x10
 #define GPS_STANDBY_COMMAND "$PMTK161, 0 * 28"
+#define BATT_MGMT_ADDR 0x36
+#define LOW_BATTERY_THRESHOLD 5
 
 // general
-#define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
-#define MIN_SPEED 2.00         // minimum number of knots before displaying speed to due resolution limitations
+#define SLEEP_ENABLE_DELAY 1500 // in rtos ticks
+#define SLEEP_COMBO_TIME 25     // "milliseconds"
+#define WAKE_COMBO_TIME 5       // "milliseconds"
+#define KNOTS_TO_MPH 1.1507795  // mulitplier for converting knots to mph
+#define MIN_SPEED 0.5           // minimum number of knots before displaying speed to due resolution limitations
 #define INIT_OPERATING_YEAR 2024
+#define SLEEP_BUTTON_COMBO_BITMASK 0x000000003 // hex value representing the pins 0-39 as bits (bits 1 and 2 are selected)
+#define RADIUS_OF_EARTH 6378.137               // in km
 
 // tasks
-#define GPS_CORE 0
+#define EXEC_CORE 0
 #define DISPLAY_CORE 1
 #define IO_REFRESH_RATE 100      // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define I2C_REFRESH_RATE 10      // measured in ticks (RTOS ticks interrupt at 1 kHz)
@@ -68,38 +75,71 @@
 ===============================================================================================
 */
 
-GpsDataType data = {
-    .connected = false,
-    .wasConnected = false,
-    .validDate = false,
-    .fixQuality = 0,
-    .dtLastFix = 0.0f,
-    .dtSinceDate = 0.0f,
-    .dtSinceTime = 0.0f,
+/**
+ * @brief
+ */
+SystemDataType systemManager = {
+    .power =
+        {
+            .lowBatteryModeEnable = false,
+            .sleepModeEnable = false,
 
-    .latitude = 0.0f,
-    .longitude = 0.0f,
-    .altitude = 0.0f,
+            .batteryPercent = 0.0f,
+            .batteryVoltage = 0.0f,
+            .batteryChargeRate = 0.0f,
 
-    .speed = 0.0f,
-    .angle = 0.0f,
+            .chipId = 0,
+            .alertStatus = 0,
+        },
 
-    .year = 0,
-    .month = 0,
-    .day = 0,
+    .display =
+        {
+            .displayMode = GPS_MODE,
+            .previousDisplayMode = ERROR_MODE,
+            .specialSelected = false,
+            .displayRefreshCounter = 0,
+        },
 
-    .hour = 0,
-    .minute = 0,
-    .second = 0,
-    .timeout = 0,
+    .gps =
+        {
+            .connected = false,
+            .wasConnected = false,
+            .validDate = false,
+            .fixQuality = 0,
+            .dtLastFix = 0.0f,
+            .dtSinceDate = 0.0f,
+            .dtSinceTime = 0.0f,
 
-    .numSats = 0,
-};
+            .latitude = 0.0f,
+            .longitude = 0.0f,
+            .altitude = 0.0f,
+
+            .waypoint = {
+                .waypointLatitude = 0.0f,
+                .waypointLongitude = 0.0f,
+            },
+
+            .speed = 0.0f,
+            .angle = 0.0f,
+
+            .year = 0,
+            .month = 0,
+            .day = 0,
+
+            .hour = 0,
+            .minute = 0,
+            .second = 0,
+            .timeout = 0,
+
+            .numSats = 0,
+        }};
+
+SystemDataType displayTaskDataCopy;
 
 DebuggerType debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .IO_debugEnabled = false,
-    .i2c_debugEnabled = false,
+    .gps_debugEnabled = false,
     .display_debugEnabled = false,
     .scheduler_debugEnable = true,
 
@@ -107,31 +147,27 @@ DebuggerType debugger = {
 
     // scheduler data
     .ioTaskCount = 0,
-    .i2cTaskCount = 0,
+    .gpsTaskCount = 0,
     .displayTaskCount = 0,
 
     .displayRefreshRate = 0,
 
     .ioTaskPreviousCount = 0,
-    .i2cTaskPreviousCount = 0,
+    .gpsTaskPreviousCount = 0,
     .displayTaskPreviousCount = 0,
 };
 
+// battery management
+Adafruit_MAX17048 batteryModule; // hardware dedicated
+
 // gps
-TwoWire I2CGPS = TwoWire(0);
-Adafruit_GPS gps(&I2CGPS);
+Adafruit_GPS gpsModule; // hardware dedicated
 
 // display
-SPIClass *hspi = new SPIClass(HSPI);
-Adafruit_ILI9341 tft(hspi, SPI_DC_PIN, SPI_RESET_PIN);
-int displayRefreshCounter = 0;
+Adafruit_ST7789 displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // hardware dedicated
 
 // io
-int powerButtonCounter = 0;
-bool enableDisplayPower = true;
-bool enableGpsPower = true;
-bool sleepModeEnable = false;
-bool lowBatteryModeEnable = false;
+int sleepComboCounter;
 
 // semaphore
 SemaphoreHandle_t xSemaphore = NULL;
@@ -141,8 +177,8 @@ SemaphoreHandle_t xMutex = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // rtos task handles
-TaskHandle_t xHandleIO = NULL;
-TaskHandle_t xHandleI2C = NULL;
+TaskHandle_t xHandleIo = NULL;
+TaskHandle_t xHandleGps = NULL;
 TaskHandle_t xHandleDisplay = NULL;
 TaskHandle_t xHandleDebug = NULL;
 
@@ -153,18 +189,25 @@ TaskHandle_t xHandleDebug = NULL;
 */
 
 // tasks
-void IOTask(void *pvParameters);
-void I2CTask(void *pvParameters);
+void IoTask(void *pvParameters);
+void GpsTask(void *pvParameters);
 void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
 // helpers
+float CalculateWaypointDistance();
+float CalculateWaypointBearing();
+double DegreesToRadians(float degrees);
 String TaskStateToString(eTaskState state);
 bool IsValidDate();
-void ActivityAnimation(GpsDataType gpsData);
-void DisplayGpsData(GpsDataType gpsData);
-void DisplayLowPowerMode();
-void DisplayInitGUI();
+
+// display
+void DisplayGpsData();
+void DisplayWaypoint();
+void DisplayBattery();
+void DisplayStatusBar();
+void DisplayError();
+void DisplayFlashlight();
 
 /*
 ===============================================================================================
@@ -195,53 +238,71 @@ void setup()
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPIO ------------------------------ //
-  // inputs
-  pinMode(SPI_CS_PIN, OUTPUT);
-  pinMode(POWER_BUTTON_PIN, INPUT);
-
-  gpio_wakeup_enable((gpio_num_t)POWER_BUTTON_PIN, GPIO_INTR_LOW_LEVEL);
+  // sleep
+  // gpio_wakeup_enable((gpio_num_t)RETURN_BUTTON, GPIO_INTR_HIGH_LEVEL); // light sleep single button wake up
+  // esp_sleep_enable_ext1_wakeup(SLEEP_BUTTON_COMBO_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH); // deep sleep muli button wakeup
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)RETURN_BUTTON, ESP_EXT1_WAKEUP_ANY_HIGH); // deep sleep single button wake up
   esp_sleep_enable_gpio_wakeup();
 
-  // outputs
-  pinMode(POWER_BUTTON_LED, OUTPUT);
-  pinMode(I2C_POWER_TOGGLE, OUTPUT);
-  pinMode(DISPLAY_POWER_TOGGLE, OUTPUT);
+  // io
+  pinMode(SELECT_BUTTON, INPUT);
+  pinMode(NEXT_BUTTON, INPUT);
+  pinMode(RETURN_BUTTON, INPUT);
 
-  digitalWrite(I2C_POWER_TOGGLE, HIGH);
-  digitalWrite(DISPLAY_POWER_TOGGLE, HIGH);
-  digitalWrite(POWER_BUTTON_LED, HIGH);
+  // gps
+  pinMode(GPS_ENABLE_PIN, OUTPUT);    // the enable pin specific to the gps module hardware
+  digitalWrite(GPS_ENABLE_PIN, HIGH); // turn on
+
+  // tft
+  pinMode(TFT_BACKLITE, OUTPUT);
+  digitalWrite(TFT_BACKLITE, HIGH); // turn on display backlight
+
+  // tft and i2c power toggle
+  pinMode(TFT_I2C_POWER, OUTPUT);    // if there are issues with power, try pulling this pin high manually
+  digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display and I2C(?)
+  delay(10);
 
   Serial.printf("gpio init [ success ]\n");
   setup.ioActive = true;
   // ------------------------------------------------------------------------- //
 
+  // -------------------------- initialize battery --------------------------- //
+  if (batteryModule.begin())
+  {
+    Serial.printf("battery init [ success ]\n");
+    Serial.printf("battery id: %x\n", batteryModule.getChipID());
+    Serial.printf("battery voltage: %fv\n", batteryModule.cellVoltage());
+    Serial.printf("battery percentage: %f\n", batteryModule.cellPercent());
+  }
+  else
+  {
+    Serial.printf("battery init [ failed ]\n");
+  }
+
+  // ------------------------------------------------------------------------- //
+
   // -------------------------- initialize display --------------------------- //
-  hspi->begin(SPI_SCLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, SPI_CS_PIN);
-
-  tft.begin();
-  tft.setRotation(1);
-
-  // display gps information
-  DisplayInitGUI();
+  displayModule.init(135, 240); // ST7789 (240x135)
+  displayModule.setRotation(1);
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  gps.begin(I2C_GPS_ADDR);
+  gpsModule.begin(I2C_GPS_ADDR);
 
   // set gps i2c baud rate
-  gps.sendCommand(PMTK_SET_BAUD_115200);
+  gpsModule.sendCommand(PMTK_SET_BAUD_115200);
 
   // filter
-  gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  gpsModule.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
   // set gps to mcu update rate
-  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+  gpsModule.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
 
   // set gps position fix rate
-  gps.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
+  gpsModule.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
 
   // request updates on antenna status (don't need this on)
   // gps.sendCommand(PGCMD_ANTENNA);
@@ -265,12 +326,12 @@ void setup()
   {
     if (setup.ioActive)
     {
-      // xTaskCreatePinnedToCore(IOTask, "io", TASK_STACK_SIZE, NULL, 1, &xHandleIO, DISPLAY_CORE);
+      xTaskCreatePinnedToCore(IoTask, "io", TASK_STACK_SIZE, NULL, 1, &xHandleIo, EXEC_CORE);
     }
 
     if (setup.gpsActive)
     {
-      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleI2C, GPS_CORE);
+      xTaskCreatePinnedToCore(GpsTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleGps, EXEC_CORE);
     }
 
     if (setup.displayActive)
@@ -293,13 +354,13 @@ void setup()
 
   // task status
   Serial.printf("\ntask status:\n");
-  if (xHandleIO != NULL)
-    Serial.printf("i/o task status: %s\n", TaskStateToString(eTaskGetState(xHandleIO)));
+  if (xHandleIo != NULL)
+    Serial.printf("i/o task status: %s\n", TaskStateToString(eTaskGetState(xHandleIo)));
   else
     Serial.printf("i/o task status: disabled!\n");
 
-  if (xHandleI2C != NULL)
-    Serial.printf("i2c task status: %s\n", TaskStateToString(eTaskGetState(xHandleI2C)));
+  if (xHandleGps != NULL)
+    Serial.printf("i2c task status: %s\n", TaskStateToString(eTaskGetState(xHandleGps)));
   else
     Serial.printf("i2c task status: disabled!\n");
 
@@ -341,10 +402,10 @@ void setup()
 */
 
 /**
- * @brief reads I/O
+ * @brief reads and writes I/O
  * @param pvParameters parameters passed to task
  */
-void IOTask(void *pvParameters)
+void IoTask(void *pvParameters)
 {
   // get task tick
   const TickType_t xFrequency = pdMS_TO_TICKS(IO_REFRESH_RATE);
@@ -354,6 +415,82 @@ void IOTask(void *pvParameters)
   {
     // limit task refresh rate
     vTaskDelayUntil(&taskLastWakeTick, xFrequency);
+    if (xSemaphoreGive(xSemaphore))
+    {
+      // buttons
+      if (digitalRead(SELECT_BUTTON) == LOW)
+      {
+        systemManager.display.specialSelected = !systemManager.display.specialSelected;
+      }
+
+      if (digitalRead(NEXT_BUTTON) == HIGH) // next button
+      {
+        systemManager.display.displayMode = static_cast<DisplayModeType>(systemManager.display.displayMode + 1);
+        if (static_cast<int>(systemManager.display.displayMode) > (ERROR_MODE - 1))
+        {
+          systemManager.display.displayMode = GPS_MODE;
+        }
+      }
+
+      if (digitalRead(RETURN_BUTTON) == HIGH) // return button
+      {
+        systemManager.display.displayMode = GPS_MODE;
+      }
+
+      // flashlight mode
+      if (digitalRead(SELECT_BUTTON) == LOW && digitalRead(NEXT_BUTTON) == HIGH)
+      {
+        systemManager.display.displayMode = FLASHLIGHT_MODE;
+      }
+
+      // --- battery --- //
+      systemManager.power.batteryPercent = batteryModule.cellPercent();
+      systemManager.power.batteryVoltage = batteryModule.cellVoltage();
+      systemManager.power.batteryChargeRate = batteryModule.chargeRate();
+
+      // --- low battery logic --- //
+      if (systemManager.power.batteryPercent <= LOW_BATTERY_THRESHOLD)
+      {
+        systemManager.power.lowBatteryModeEnable = true;
+      }
+      else
+      {
+        systemManager.power.lowBatteryModeEnable = false;
+      }
+      // --- low battery logic --- //
+
+      // --- sleep logic --- //
+      if (digitalRead(RETURN_BUTTON) == LOW && digitalRead(NEXT_BUTTON) == LOW)
+      {
+        sleepComboCounter++;
+      }
+      else
+      {
+        sleepComboCounter = 0;
+      }
+
+      if (sleepComboCounter >= SLEEP_COMBO_TIME)
+      {
+        systemManager.power.sleepModeEnable = true;
+
+        vTaskDelay(SLEEP_ENABLE_DELAY); // delay sleep actions
+
+        // turn off display and gps module power
+        digitalWrite(GPS_ENABLE_PIN, LOW);
+        digitalWrite(TFT_I2C_POWER, LOW);
+        esp_deep_sleep_start();
+      }
+      else if (systemManager.power.sleepModeEnable == true && sleepComboCounter > WAKE_COMBO_TIME && sleepComboCounter < 25)
+      {
+        systemManager.display.displayMode = GPS_MODE;
+
+        systemManager.power.sleepModeEnable = false;
+
+        // turn on display and gps module power
+        digitalWrite(TFT_I2C_POWER, HIGH);
+      }
+      // --- sleep logic --- //
+    }
 
     // debugging
     if (debugger.debugEnabled)
@@ -367,7 +504,7 @@ void IOTask(void *pvParameters)
  * @brief i2c bus
  * @param pvParameters parameters passed to task
  */
-void I2CTask(void *pvParameters)
+void GpsTask(void *pvParameters)
 {
   // get task tick
   TickType_t taskLastWakeTick = xTaskGetTickCount();
@@ -379,70 +516,66 @@ void I2CTask(void *pvParameters)
 
     if (xSemaphoreGive(xSemaphore))
     {
-      // if there is no data ping the gps module
-      if (sleepModeEnable == false)
+      // read gps data
+      while (gpsModule.read() != 0)
       {
-        // read gps data
-        while (gps.read() != 0)
+        // process gps data
+        if (gpsModule.newNMEAreceived() == true)
         {
-          // process gps data
-          if (gps.newNMEAreceived() == true)
+          gpsModule.parse(gpsModule.lastNMEA()); // this sets the newNMEAreceived() flag to false
+
+          // connection data
+          systemManager.gps.connected = gpsModule.fix;
+          systemManager.gps.fixQuality = gpsModule.fixquality;
+
+          systemManager.gps.numSats = gpsModule.satellites;
+          systemManager.gps.dtLastFix = gpsModule.secondsSinceFix();
+          systemManager.gps.dtSinceTime = gpsModule.secondsSinceTime();
+          systemManager.gps.dtSinceTime = gpsModule.secondsSinceDate();
+
+          // collect location data
+          systemManager.gps.latitude = gpsModule.latitudeDegrees;
+          systemManager.gps.longitude = gpsModule.longitudeDegrees;
+          systemManager.gps.altitude = gpsModule.altitude;
+
+          // collect vector data
+          systemManager.gps.speed = gpsModule.speed; // speed is given in knots
+          systemManager.gps.angle = gpsModule.angle;
+
+          // not enough resolution for accurately measuring very low speeds
+          if (systemManager.gps.speed > MIN_SPEED)
           {
-            gps.parse(gps.lastNMEA()); // this sets the newNMEAreceived() flag to false
-
-            // connection data
-            data.connected = gps.fix;
-            data.fixQuality = gps.fixquality;
-
-            data.numSats = gps.satellites;
-            data.dtLastFix = gps.secondsSinceFix();
-            data.dtSinceTime = gps.secondsSinceTime();
-            data.dtSinceTime = gps.secondsSinceDate();
-
-            // collect location data
-            data.latitude = gps.latitudeDegrees;
-            data.longitude = gps.longitudeDegrees;
-            data.altitude = gps.altitude;
-
-            // collect vector data
-            data.speed = gps.speed; // speed is given in knots
-            data.angle = gps.angle;
-
-            // not enough resolution for accurately measuring very low speeds
-            if (data.speed > MIN_SPEED)
-            {
-              data.speed = data.speed * KNOTS_TO_MPH; // convert to mph
-            }
-            else
-            {
-              data.speed = 0.0f;
-              data.angle = 0.0f;
-            }
-
-            // collect date data
-            data.year = gps.year + 2000;
-            data.month = gps.month;
-            data.day = gps.day;
-
-            // collect time data
-            data.hour = gps.hour;
-            data.minute = gps.minute;
-            data.second = gps.seconds;
-
-            data.validDate = IsValidDate();
+            systemManager.gps.speed = systemManager.gps.speed * KNOTS_TO_MPH; // convert to mph
           }
+          else
+          {
+            systemManager.gps.speed = 0.0f;
+            systemManager.gps.angle = 0.0f;
+          }
+
+          // collect date data
+          systemManager.gps.year = gpsModule.year + 2000;
+          systemManager.gps.month = gpsModule.month;
+          systemManager.gps.day = gpsModule.day;
+
+          // collect time data
+          systemManager.gps.hour = gpsModule.hour;
+          systemManager.gps.minute = gpsModule.minute;
+          systemManager.gps.second = gpsModule.seconds;
+
+          systemManager.gps.validDate = IsValidDate();
         }
       }
+    }
 
-      // debugging
-      if (debugger.debugEnabled)
-      {
-        debugger.i2cTaskCount++;
+    // debugging
+    if (debugger.debugEnabled)
+    {
+      debugger.gpsTaskCount++;
 
-        char c = gps.read();
-        if (c)
-          Serial.print(c);
-      }
+      char c = gpsModule.read();
+      if (c)
+        Serial.print(c);
     }
   }
 }
@@ -455,7 +588,6 @@ void DisplayTask(void *pvParameters)
 {
   // get task tick
   TickType_t taskLastWakeTick = xTaskGetTickCount();
-  GpsDataType gpsDataCopy;
 
   for (;;)
   {
@@ -472,56 +604,39 @@ void DisplayTask(void *pvParameters)
       }
 
       // copy gps data
-      gpsDataCopy = data;
-
-      // --- low battery logic --- //
-      // --- low battery logic --- //
-
-      // --- sleep logic --- //
-      if (digitalRead(POWER_BUTTON_PIN) == LOW)
-      {
-        powerButtonCounter++;
-      }
-      else
-      {
-        powerButtonCounter = 0;
-      }
-
-      if (powerButtonCounter >= 25)
-      {
-        if (sleepModeEnable == false)
-        {
-          DisplayLowPowerMode();
-        }
-
-        sleepModeEnable = true;
-        digitalWrite(POWER_BUTTON_LED, !sleepModeEnable);
-
-        // gps
-        gps.sendCommand(GPS_STANDBY_COMMAND);
-
-        digitalWrite(DISPLAY_POWER_TOGGLE, !sleepModeEnable);
-
-        esp_light_sleep_start();
-      }
-      else if (sleepModeEnable == true && powerButtonCounter > 5 && powerButtonCounter < 25)
-      {
-        DisplayInitGUI();
-
-        sleepModeEnable = false;
-        gps.sendCommand("x");
-        digitalWrite(POWER_BUTTON_LED, !sleepModeEnable);
-        digitalWrite(DISPLAY_POWER_TOGGLE, !sleepModeEnable);
-      }
-      // --- sleep logic --- //
+      displayTaskDataCopy = systemManager;
     }
 
     // update display
-    if (!sleepModeEnable)
+    DisplayStatusBar();
+
+    if (displayTaskDataCopy.display.displayMode != displayTaskDataCopy.display.previousDisplayMode)
     {
-      DisplayGpsData(gpsDataCopy);
-      ActivityAnimation(gpsDataCopy);
+      displayModule.fillScreen(ST77XX_BLACK);
     }
+    switch (displayTaskDataCopy.display.displayMode)
+    {
+    case GPS_MODE:
+      DisplayGpsData();
+      break;
+
+    case WAYPOINT_MODE:
+      DisplayWaypoint();
+      break;
+
+    case BATTERY_MODE:
+      DisplayBattery();
+      break;
+
+    case FLASHLIGHT_MODE:
+      DisplayFlashlight();
+      break;
+
+    default:
+      DisplayError();
+      break;
+    }
+    displayTaskDataCopy.display.previousDisplayMode = displayTaskDataCopy.display.displayMode;
 
     // debugging
     if (debugger.debugEnabled)
@@ -546,9 +661,9 @@ void DebugTask(void *pvParameters)
     }
 
     // i2c
-    if (debugger.i2c_debugEnabled)
+    if (debugger.gps_debugEnabled)
     {
-      PrintI2CDebug();
+      PrintGpsDebug();
     }
 
     // display
@@ -585,6 +700,54 @@ void loop()
                                     helper functions
 ===============================================================================================
 */
+
+/**
+ * @brief converts a value in degrees to radians
+ */
+double DegreesToRadians(float degrees)
+{
+  return (degrees * PI / 180.0);
+}
+
+/**
+ * use the haversine formula to calculate the disance between to gps points on earth
+ */
+float CalculateWaypointDistance()
+{
+  // inits
+  double distance;
+  double currentLatInRad = DegreesToRadians(displayTaskDataCopy.gps.latitude);
+  double currentLongInRad = DegreesToRadians(displayTaskDataCopy.gps.longitude);
+  double waypointLat = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLatitude);
+  double waypointLong = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLongitude);
+
+  // calculate!
+  float firstTerm = pow(sin((waypointLat - currentLatInRad) / 2), 2);
+  float fourtTerm = pow(sin((waypointLong - currentLongInRad) / 2), 2);
+  distance = (2 * RADIUS_OF_EARTH) * asin(firstTerm + cos(currentLatInRad) * cos(waypointLat) * fourtTerm);
+
+  return distance;
+}
+
+/**
+ * use the a funky formula to calculate the bearing from gps point 1 to gps point 2
+ */
+float CalculateWaypointBearing()
+{
+  // inits
+  double bearing;
+  double currentLatInRad = DegreesToRadians(displayTaskDataCopy.gps.latitude);
+  double currentLongInRad = DegreesToRadians(displayTaskDataCopy.gps.longitude);
+  double waypointLat = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLatitude);
+  double waypointLong = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLongitude);
+
+  // calculate!
+  float numerator = sin(waypointLong - currentLatInRad) * cos(waypointLat);
+  float denominator = cos(currentLatInRad) * sin(waypointLat) - sin(currentLatInRad) * cos(waypointLat) * cos(waypointLong - currentLatInRad);
+  bearing = atan(numerator / denominator);
+
+  return (bearing * 180 / PI + 360); // convert back to degrees
+}
 
 /**
  * @brief converts an rtos task state to printable string format
@@ -627,7 +790,7 @@ String TaskStateToString(eTaskState state)
  */
 bool IsValidDate()
 {
-  if (data.year >= INIT_OPERATING_YEAR)
+  if (displayTaskDataCopy.gps.year >= INIT_OPERATING_YEAR)
   {
     return true;
   }
@@ -638,312 +801,337 @@ bool IsValidDate()
   // return (data.year >= INIT_OPERATING_YEAR) ? true : false;
 }
 
-/**
- * @brief displays animation about current activity
- */
-void ActivityAnimation(GpsDataType gpsDataCopy)
-{
-  tft.setTextSize(1);
-  tft.setCursor(220, 10);
-
-  switch (gpsDataCopy.fixQuality)
-  {
-  // invalid fix quality
-  case 0:
-    if (gpsDataCopy.validDate)
-    {
-      // arrows building inwards
-      tft.setTextColor(ILI9341_ORANGE, ILI9341_BLACK);
-      switch (displayRefreshCounter)
-      {
-      case 0:
-        tft.printf("     <>     ");
-        displayRefreshCounter++;
-        break;
-      case 1:
-        tft.printf("~    <>    ~");
-        displayRefreshCounter++;
-        break;
-      case 2:
-        tft.printf("~~   <>   ~~");
-        displayRefreshCounter++;
-        break;
-      case 3:
-        tft.printf("~~~  <>  ~~~");
-        displayRefreshCounter++;
-        break;
-      case 4:
-        tft.printf("~~~> <> <~~~");
-        displayRefreshCounter = 0;
-        break;
-
-      default:
-        displayRefreshCounter = 0;
-        break;
-      }
-    }
-    else
-    {
-      // arrows building outwards
-      tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-      switch (displayRefreshCounter)
-      {
-      case 0:
-        tft.printf("     <>     ");
-        displayRefreshCounter++;
-        break;
-      case 1:
-        tft.printf("   - <> -   ");
-        displayRefreshCounter++;
-        break;
-      case 2:
-        tft.printf("  -- <> --  ");
-        displayRefreshCounter++;
-        break;
-      case 3:
-        tft.printf(" --- <> --- ");
-        displayRefreshCounter++;
-        break;
-      case 4:
-        tft.printf("<--- <> --->");
-        displayRefreshCounter = 0;
-        break;
-
-      default:
-        displayRefreshCounter = 0;
-        break;
-      }
-    }
-    break;
-
-  // gps fix quality
-  case 1:
-    // arrows building inwards
-    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-    switch (displayRefreshCounter)
-    {
-    case 0:
-      tft.printf("     <>     ");
-      displayRefreshCounter++;
-      break;
-    case 1:
-      tft.printf("-    <>    -");
-      displayRefreshCounter++;
-      break;
-    case 2:
-      tft.printf("--   <>   --");
-      displayRefreshCounter++;
-      break;
-    case 3:
-      tft.printf("---  <>  ---");
-      displayRefreshCounter++;
-      break;
-    case 4:
-      tft.printf("---> <> <---");
-      displayRefreshCounter = 0;
-      break;
-
-    default:
-      displayRefreshCounter = 0;
-      break;
-    }
-    break;
-
-  default:
-    break;
-  }
-}
+/*
+===============================================================================================
+                                    display functions
+===============================================================================================
+*/
 
 /**
- *
+ * @brief general gps data screen
  */
-void DisplayGpsData(GpsDataType dataCopy)
+void DisplayGpsData()
 {
   // location
   int minSats = 3;
-  tft.setTextSize(2);
-  tft.setTextColor(ILI9341_CYAN, ILI9341_BLACK);
-  if (dataCopy.numSats >= minSats)
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
+  if (displayTaskDataCopy.gps.numSats >= minSats)
   {
-    tft.setCursor(5, 30);
-    tft.printf("latitude: %.5f", dataCopy.latitude);
+    displayModule.setCursor(0, 10);
+    displayModule.printf("latitude: %.5f", displayTaskDataCopy.gps.latitude);
 
-    tft.setCursor(5, 50);
-    tft.printf("longitude: %.5f", dataCopy.longitude);
+    displayModule.setCursor(0, 20);
+    displayModule.printf("longitude: %.5f", displayTaskDataCopy.gps.longitude);
 
-    tft.setCursor(5, 70);
-    tft.printf("altitude: %d m        ", (int)dataCopy.altitude);
+    displayModule.setCursor(0, 30);
+    displayModule.printf("altitude: %d m        ", (int)displayTaskDataCopy.gps.altitude);
   }
   else
   {
-    tft.setCursor(5, 30);
-    tft.printf("latitude:  ---.---    ");
+    displayModule.setCursor(0, 10);
+    displayModule.printf("latitude:  ---.---    ");
 
-    tft.setCursor(5, 50);
-    tft.printf("longitude: ---.---    ");
+    displayModule.setCursor(0, 20);
+    displayModule.printf("longitude: ---.---    ");
 
-    tft.setCursor(5, 70);
-    tft.printf("altitude:  ---.---    ");
+    displayModule.setCursor(0, 30);
+    displayModule.printf("altitude:  ---.---    ");
   }
 
   // speed
-  tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
-  tft.setCursor(5, 95);
-  if (dataCopy.numSats > minSats)
+  displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+  displayModule.setCursor(0, 50);
+  if (displayTaskDataCopy.gps.numSats > minSats)
   {
-    tft.printf("speed: %.1f mph", dataCopy.speed);
+    displayModule.printf("speed: %.1f mph", displayTaskDataCopy.gps.speed);
   }
   else
   {
-    tft.printf("speed: ---      ");
+    displayModule.printf("speed: ---      ");
   }
 
   // angle
-  tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
-  tft.setCursor(5, 115);
-  if (dataCopy.speed > MIN_SPEED)
+  displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+  displayModule.setCursor(0, 60);
+  if (displayTaskDataCopy.gps.speed > MIN_SPEED)
   {
-    tft.printf("heading: %d deg", (int)dataCopy.angle);
+    displayModule.printf("heading: %d deg", (int)displayTaskDataCopy.gps.angle);
   }
   else
   {
-    tft.printf("heading: ---      ");
+    displayModule.printf("heading: ---      ");
   }
 
   // date and time
-  if (dataCopy.validDate)
+  if (displayTaskDataCopy.gps.validDate)
   {
-    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-    tft.setCursor(5, 140);
-    tft.printf("date: %d / %d / %d    ", dataCopy.year, dataCopy.month, dataCopy.day);
+    displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+    displayModule.setCursor(0, 80);
+    displayModule.printf("date: %d / %d / %d    ", displayTaskDataCopy.gps.year, displayTaskDataCopy.gps.month, displayTaskDataCopy.gps.day);
 
-    tft.setCursor(5, 160);
-    tft.printf("time: %d:%d:%d (UTC)      ", dataCopy.hour, dataCopy.minute, dataCopy.second);
+    displayModule.setCursor(0, 90);
+    displayModule.printf("time: %d:%d:%d (UTC)      ", displayTaskDataCopy.gps.hour, displayTaskDataCopy.gps.minute, displayTaskDataCopy.gps.second);
   }
   else
   {
-    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-    tft.setCursor(5, 140);
-    tft.printf("date: -- / -- / --    ");
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    displayModule.setCursor(0, 80);
+    displayModule.printf("date: -- / -- / --    ");
 
-    tft.setTextColor(ILI9341_MAGENTA, ILI9341_BLACK);
-    tft.setCursor(5, 160);
-    tft.printf("time: --:--:--            ");
+    displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+    displayModule.setCursor(0, 90);
+    displayModule.printf("time: --:--:--            ");
   }
 
   // sats
-  tft.setCursor(5, 190);
-  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-  tft.printf("sats: ");
-  if (dataCopy.numSats == 0)
+  displayModule.setCursor(0, 110);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  displayModule.printf("sats: ");
+  if (displayTaskDataCopy.gps.numSats == 0)
   {
-    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
   }
-  if (dataCopy.numSats > 0 && dataCopy.numSats <= minSats)
+  if (displayTaskDataCopy.gps.numSats > 0 && displayTaskDataCopy.gps.numSats <= minSats)
   {
-    tft.setTextColor(ILI9341_ORANGE, ILI9341_BLACK);
+    displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
   }
-  if (dataCopy.numSats > minSats)
+  if (displayTaskDataCopy.gps.numSats > minSats)
   {
-    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
+    displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
   }
-  tft.printf("%d ", dataCopy.numSats);
-
-  // connection type
-  tft.setCursor(130, 190);
-  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-  tft.printf("status: ");
-  switch (dataCopy.fixQuality)
-  {
-  // invalid fix quality
-  case 0:
-    if (dataCopy.validDate)
-    {
-      tft.setTextColor(ILI9341_ORANGE, ILI9341_BLACK);
-      tft.printf("no fix ");
-    }
-    else // no fix and no date time
-    {
-      tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-      tft.printf("no conn");
-    }
-    break;
-
-  // gps fix quality
-  case 1:
-    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-    tft.printf("gps    ");
-    break;
-
-  // d-gps fixed quality
-  case 2:
-    tft.setTextColor(ILI9341_BLUE, ILI9341_BLACK);
-    tft.printf("d-gps  ");
-    break;
-
-  // catch statement
-  default:
-    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-    tft.printf("err:%d ", dataCopy.fixQuality);
-    break;
-  }
+  displayModule.printf("%d ", displayTaskDataCopy.gps.numSats);
 
   // time since last fix
-  tft.setCursor(5, 220);
-  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-  tft.printf("dt-fix: ");
-  if (dataCopy.validDate)
+  displayModule.setCursor(0, 120);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  displayModule.printf("dt-fix: ");
+  if (displayTaskDataCopy.gps.validDate)
   {
-    if (dataCopy.dtLastFix < 1.0)
+    if (displayTaskDataCopy.gps.dtLastFix < 1.0)
     {
-      tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-      tft.printf("%.2f seconds    ", dataCopy.dtLastFix);
+      displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+      displayModule.printf("%.2f seconds    ", displayTaskDataCopy.gps.dtLastFix);
     }
-    else if (dataCopy.dtLastFix < 120 && dataCopy.dtLastFix > 1.0) // been a bit since a connection
+    else if (displayTaskDataCopy.gps.dtLastFix < 120 && displayTaskDataCopy.gps.dtLastFix > 1.0) // been a bit since a connection
     {
-      tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
-      tft.printf("%.2f seconds    ", dataCopy.dtLastFix);
+      displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+      displayModule.printf("%.2f seconds    ", displayTaskDataCopy.gps.dtLastFix);
     }
     else // longer than a minute without a fix
     {
-      tft.setTextColor(ILI9341_ORANGE, ILI9341_BLACK);
-      tft.printf("> 2 minutes     ");
+      displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
+      displayModule.printf("> 2 minutes     ");
     }
   }
   else
   {
-    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
-    tft.printf("unreliable data    ");
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    displayModule.printf("bad data        ");
   }
 }
 
 /**
- *
+ * @brief the waypoint screen
  */
-void DisplayLowPowerMode()
+void DisplayWaypoint()
 {
-  tft.fillScreen(ILI9341_BLACK);
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+  displayModule.setCursor(75, 100);
+  displayModule.printf("[ waypoints ]");
 
-  tft.setTextSize(2);
-  tft.setTextColor(ILI9341_RED);
-  tft.setCursor(75, 100);
-  tft.printf("[ sleep mode ]");
+  // display distance and bearing
+  displayModule.setCursor(0, 80);
+  displayModule.printf("distance: %f.2 km", CalculateWaypointDistance());
+
+  displayModule.setCursor(0, 100);
+  displayModule.printf("bearing: %f.0 deg", CalculateWaypointBearing());
 }
 
 /**
- *
+ * @brief the battery information screen
  */
-void DisplayInitGUI()
+void DisplayBattery()
 {
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setTextSize(3);
-  tft.setTextColor(ILI9341_RED);
-  tft.setCursor(0, 0);
-  tft.printf("mini gps:");
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
 
-  // outline boxes
-  tft.drawRect(0, 25, 320, 155, ILI9341_DARKCYAN);
-  tft.drawRect(0, 185, 320, 55, ILI9341_MAGENTA);
+  // display battery stats
+  displayModule.setCursor(0, 10);
+  displayModule.printf("percentage: %f.1%", displayTaskDataCopy.power.batteryPercent);
+
+  displayModule.setCursor(0, 20);
+  displayModule.printf("percentage: %f.2v", displayTaskDataCopy.power.batteryVoltage);
+
+  displayModule.setCursor(0, 30);
+  displayModule.printf("rate: %f.2 %/h", displayTaskDataCopy.power.batteryChargeRate);
+
+  // display battery manager chip stats
+  displayModule.setCursor(0, 50);
+  displayModule.printf("chip id: %d", displayTaskDataCopy.power.chipId);
+
+  displayModule.setCursor(0, 60);
+  displayModule.printf("alert status: %x", displayTaskDataCopy.power.alertStatus);
+}
+
+/**
+ * @brief display a status bar at the top of the screen with important information
+ */
+void DisplayStatusBar()
+{
+  // --- mode --- //
+  String mode;
+  int modeColor;
+  int underscoreLength;
+  displayModule.setCursor(5, 5);
+  displayModule.setTextSize(1);
+  switch (displayTaskDataCopy.display.displayMode)
+  {
+  case GPS_MODE:
+    mode = "gps";
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    modeColor = ST77XX_RED;
+    break;
+
+  case WAYPOINT_MODE:
+    mode = "waypoint";
+    displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+    modeColor = ST77XX_MAGENTA;
+    break;
+
+  case BATTERY_MODE:
+    mode = "battery";
+    displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
+    modeColor = ST77XX_CYAN;
+    break;
+
+  default:
+    mode = "error";
+    displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
+    modeColor = ST77XX_ORANGE;
+    break;
+  }
+  displayModule.printf("< %s >", mode.c_str());
+
+  // underscore mode
+  displayModule.drawLine(5, 10, 5, (mode.length() * 3), modeColor); // mulitply text size 1 num width in pixels
+  // --- mode --- //
+
+  // --- gps fix status --- //
+  if (displayTaskDataCopy.gps.fixQuality == 1) // fix
+  {
+    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    {
+      displayModule.setTextColor(ST77XX_BLACK, ST77XX_GREEN);
+      displayTaskDataCopy.display.displayRefreshCounter++;
+    }
+    else
+    {
+      displayModule.setTextColor(ST77XX_GREEN, ST77XX_WHITE);
+      displayTaskDataCopy.display.displayRefreshCounter = 0;
+    }
+  }
+  else if (displayTaskDataCopy.gps.validDate) // no fix but valid rtc data
+  {
+    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    {
+      displayModule.setTextColor(ST77XX_BLACK, ST77XX_ORANGE);
+      displayTaskDataCopy.display.displayRefreshCounter++;
+    }
+    else
+    {
+      displayModule.setTextColor(ST77XX_ORANGE, ST77XX_WHITE);
+      displayTaskDataCopy.display.displayRefreshCounter = 0;
+    }
+  }
+  else // no fix and no rtc data
+  {
+    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    {
+      displayModule.setTextColor(ST77XX_BLACK, ST77XX_RED);
+      displayTaskDataCopy.display.displayRefreshCounter++;
+    }
+    else
+    {
+      displayModule.setTextColor(ST77XX_RED, ST77XX_WHITE);
+      displayTaskDataCopy.display.displayRefreshCounter = 0;
+    }
+  }
+  displayModule.setTextSize(1);
+  displayModule.setCursor(150, 10);
+  displayModule.printf("gps");
+  // --- gps fix status --- //
+
+  // --- battery --- //
+  // draw battery symbol
+  displayModule.setCursor(220, 10);
+  if (displayTaskDataCopy.power.batteryPercent >= 50.0)
+  {
+    displayModule.drawRoundRect(220, 10, 25, 10, 2, ST77XX_GREEN);
+  }
+  else if (displayTaskDataCopy.power.batteryPercent >= 20.0 && displayTaskDataCopy.power.batteryPercent < 50.0)
+  {
+    displayModule.drawRoundRect(220, 10, 25, 10, 2, ST77XX_ORANGE);
+  }
+  else if (displayTaskDataCopy.power.batteryPercent < 20.0)
+  {
+    displayModule.drawRoundRect(220, 10, 25, 10, 2, ST77XX_RED);
+  }
+  else
+  {
+    displayModule.printf("error!");
+  }
+
+  // write battery percentage
+  displayModule.setTextSize(1);
+  displayModule.setCursor(220, 10);
+  displayModule.printf("%f.0%", displayTaskDataCopy.power.batteryPercent);
+  // --- battery --- //
+}
+
+/**
+ * @brief display screen that indicates a failure in display modes
+ */
+void DisplayError()
+{
+  // init screen
+  displayModule.fillScreen(ST77XX_BLACK);
+
+  displayModule.setTextSize(2);
+  displayModule.setTextColor(ST77XX_RED);
+  displayModule.setCursor(75, 100);
+  displayModule.printf("[ mode error ]");
+}
+
+/**
+ * @brief idk now im just flexing hardware verticalization
+ */
+void DisplayFlashlight()
+{
+  if (!displayTaskDataCopy.display.specialSelected)
+  {
+    displayModule.fillScreen(ST77XX_WHITE);
+  }
+  else
+  {
+    // init screen
+    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    {
+      displayModule.fillScreen(ST77XX_RED);
+      displayTaskDataCopy.display.displayRefreshCounter++;
+    }
+    else
+    {
+      displayModule.fillScreen(ST77XX_BLACK);
+      displayTaskDataCopy.display.displayRefreshCounter = 0;
+    }
+
+    displayModule.setTextSize(2);
+    displayModule.setTextColor(ST77XX_RED);
+    displayModule.setCursor(50, 100);
+    displayModule.printf("[ emergency light ]");
+  }
 }
 
 /*
@@ -965,43 +1153,43 @@ void PrintIODebug()
 /**
  * @brief ic2 debugging
  */
-void PrintI2CDebug()
+void PrintGpsDebug()
 {
-  Serial.printf("\n--- start i2c debug ---\n");
+  Serial.printf("\n--- start gps debug ---\n");
 
-  debugger.debugText = "";
-  for (int i = 0; i < 100; ++i)
-  {
-    if (Serial.available())
-    {
-      char c = Serial.read();
-      gps.write(c);
-    }
-    if (gps.available())
-    {
-      char c = gps.read();
-      Serial.write(c);
+  // debugger.debugText = "";
+  // for (int i = 0; i < 100; ++i)
+  // {
+  //   if (Serial.available())
+  //   {
+  //     char c = Serial.read();
+  //     gpsModule.write(c);
+  //   }
+  //   if (gpsModule.available())
+  //   {
+  //     char c = gpsModule.read();
+  //     Serial.write(c);
 
-      debugger.debugText.concat(c);
-    }
-  }
-  Serial.printf("\n\n");
+  //     debugger.debugText.concat(c);
+  //   }
+  // }
+  // Serial.printf("\n\n");
 
-  Serial.printf("fix: %s\n", gps.fix ? "yes" : "no");
-  Serial.printf("# sats: %d\n", gps.satellites);
+  // Serial.printf("fix: %s\n", gpsModule.fix ? "yes" : "no");
+  // Serial.printf("# sats: %d\n", gps.satellites);
 
-  Serial.printf("time: %d:%d:%d\n", gps.hour, gps.minute, gps.seconds);
-  Serial.printf("date: %d-%d-%d\n", gps.year, gps.month, gps.day);
+  // Serial.printf("time: %d:%d:%d\n", gps.hour, gps.minute, gps.seconds);
+  // Serial.printf("date: %d-%d-%d\n", gps.year, gps.month, gps.day);
 
-  Serial.printf("lat: %f\n", gps.latitude);
-  Serial.printf("long: %f\n", gps.longitude);
-  Serial.printf("alt: %f\n", gps.altitude);
+  // Serial.printf("lat: %f\n", gps.latitude);
+  // Serial.printf("long: %f\n", gps.longitude);
+  // Serial.printf("alt: %f\n", gps.altitude);
 
-  Serial.printf("dt-fix: %f\n", gps.secondsSinceFix());
-  Serial.printf("dt-time: %f\n", gps.secondsSinceTime());
-  Serial.printf("dt-date: %f\n", gps.secondsSinceDate());
+  // Serial.printf("dt-fix: %f\n", gps.secondsSinceFix());
+  // Serial.printf("dt-time: %f\n", gps.secondsSinceTime());
+  // Serial.printf("dt-date: %f\n", gps.secondsSinceDate());
 
-  Serial.printf("\n--- end i2c debug ---\n");
+  Serial.printf("\n--- end gps debug ---\n");
 }
 
 /**
@@ -1011,11 +1199,11 @@ void PrintDisplayDebug()
 {
   Serial.printf("\n--- start display debug ---\n");
 
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setTextSize(2);
-  tft.setCursor(0, 0);
-  tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
-  tft.printf("%s", debugger.debugText.c_str());
+  // displayModule.fillScreen(ST77XX_BLACK);
+  // displayModule.setTextSize(2);
+  // displayModule.setCursor(0, 0);
+  // displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  // displayModule.printf("%s", debugger.debugText.c_str());
 
   Serial.printf("\n--- end display debug ---\n");
 }
@@ -1032,13 +1220,13 @@ void PrintSchedulerDebug()
   int uptime = esp_rtc_get_time_us() / 1000000;
 
   // gather task information
-  if (xHandleIO != NULL)
+  if (xHandleIo != NULL)
   {
-    taskStates.push_back(eTaskGetState(xHandleIO));
+    taskStates.push_back(eTaskGetState(xHandleIo));
   }
-  if (xHandleI2C != NULL)
+  if (xHandleGps != NULL)
   {
-    taskStates.push_back(eTaskGetState(xHandleI2C));
+    taskStates.push_back(eTaskGetState(xHandleGps));
   }
   if (xHandleDisplay != NULL)
   {
@@ -1046,7 +1234,7 @@ void PrintSchedulerDebug()
   }
 
   taskRefreshRate.push_back(debugger.ioTaskCount - debugger.ioTaskPreviousCount);
-  taskRefreshRate.push_back(debugger.i2cTaskCount - debugger.i2cTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.gpsTaskCount - debugger.gpsTaskPreviousCount);
   taskRefreshRate.push_back(debugger.displayTaskCount - debugger.displayTaskPreviousCount);
 
   // make it usable
@@ -1057,11 +1245,11 @@ void PrintSchedulerDebug()
 
   // print
   Serial.printf("uptime: %d | read io: <%d Hz> (%d) | i2c: <%d Hz> (%d) | display: <%d Hz> (%d) \n",
-                uptime, taskRefreshRate.at(0), debugger.ioTaskCount, taskRefreshRate.at(1), debugger.i2cTaskCount,
+                uptime, taskRefreshRate.at(0), debugger.ioTaskCount, taskRefreshRate.at(1), debugger.gpsTaskCount,
                 taskRefreshRate.at(2), debugger.displayTaskCount);
 
   // update counters
   debugger.ioTaskPreviousCount = debugger.ioTaskCount;
-  debugger.i2cTaskPreviousCount = debugger.i2cTaskCount;
+  debugger.gpsTaskPreviousCount = debugger.gpsTaskCount;
   debugger.displayTaskPreviousCount = debugger.displayTaskCount;
 }

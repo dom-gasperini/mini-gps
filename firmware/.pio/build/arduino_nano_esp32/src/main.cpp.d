@@ -91,7 +91,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-uart.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/uart_types.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-gpio.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/arduino_nano_nora/pins_arduino.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/adafruit_feather_esp32s3_reversetft/pins_arduino.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-touch.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-dac.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/include/driver/gpio.h \
@@ -180,15 +180,6 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32s3/rtc.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/include/driver/rtc_io.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/include/soc/rtc_io_periph.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include/soc/rtc_io_channel.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include/soc/rtc_io_reg.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include/soc/rtc_io_struct.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include/soc/rtc_cntl_reg.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include/soc/rtc_cntl_struct.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include/soc/sens_struct.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/rtc_io_types.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
@@ -201,9 +192,14 @@
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/gfxfont.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_I2CDevice.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_SPIDevice.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ ILI9341/Adafruit_ILI9341.h \
+ .pio/libdeps/arduino_nano_esp32/Adafruit\ ST7735\ and\ ST7789\ Library/Adafruit_ST7789.h \
+ .pio/libdeps/arduino_nano_esp32/Adafruit\ ST7735\ and\ ST7789\ Library/Adafruit_ST77xx.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/Adafruit_SPITFT.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/Adafruit_GFX.h \
+ .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/Adafruit_SPITFT_Macros.h \
+ .pio/libdeps/arduino_nano_esp32/Adafruit\ MAX1704X/Adafruit_MAX1704X.h \
+ .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_BusIO_Register.h \
+ .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_GenericDevice.h \
  include/data_types.h include/pin_config.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_pm/include/esp_pm.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_pm/include/esp32s3/pm.h \

@@ -1,7 +1,7 @@
 .pio/build/arduino_nano_esp32/FrameworkArduino/USB.cpp.o: \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/USB.cpp \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/USB.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_opi/include/sdkconfig.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_qspi/include/sdkconfig.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include/esp_event.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_common/include/esp_err.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_common/include/esp_compiler.h \
@@ -121,7 +121,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/WString.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/pgmspace.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Printable.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/arduino_nano_nora/pins_arduino.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/variants/adafruit_feather_esp32s3_reversetft/pins_arduino.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/esp_sleep.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include/hal/touch_sensor_types.h \
