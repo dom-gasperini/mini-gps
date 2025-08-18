@@ -12,6 +12,8 @@
 ========================================================
 */
 
+#include <vector>
+
 /*
 ========================================================
                     data types
@@ -48,6 +50,21 @@ typedef enum
 
 typedef struct
 {
+    bool selectShortPress;
+    bool selectLongPress;
+
+    bool optionShortPress;
+    bool optionLongPress;
+
+    bool returnShortPress;
+    bool returnLongPress;
+
+    bool specialShortPress;
+    bool specialLongPress;
+} InputFlagsType;
+
+typedef struct
+{
     bool lowBatteryModeEnable;
     bool sleepModeEnable;
 
@@ -63,7 +80,6 @@ typedef struct
 {
     DisplayModeType displayMode;
     DisplayModeType previousDisplayMode;
-    bool specialSelected;
     int displayRefreshCounter;
 } DisplayDataType;
 
@@ -84,7 +100,7 @@ typedef struct
     float longitude;
     float altitude;
 
-    WaypointCoordinatesType waypoint;
+    std::vector<WaypointCoordinatesType> waypoints;
 
     float speed;
     float angle;
@@ -114,6 +130,7 @@ typedef struct
 
 typedef struct
 {
+    InputFlagsType inputFlags;
     PowerDataType power;
     DisplayDataType display;
     GpsDataType gps;

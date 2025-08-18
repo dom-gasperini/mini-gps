@@ -34,7 +34,7 @@ esp_pm_config_esp32s3_t power_configuration{
 
 // io
 #define SELECT_BUTTON 0 // top | pulled up
-#define NEXT_BUTTON 1   // middle | pulled down
+#define OPTION_BUTTON 1 // middle | pulled down
 #define RETURN_BUTTON 2 // bottom | pulled down
 
 // gps

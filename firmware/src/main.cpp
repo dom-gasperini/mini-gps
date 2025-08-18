@@ -19,9 +19,10 @@
 
 // core
 #include <Arduino.h>
-#include "rtc.h"
+#include <rtc.h>
 #include <SPI.h>
-#include "Wire.h"
+#include <Wire.h>
+#include <Preferences.h>
 #include <vector>
 
 // hardware specific
@@ -48,14 +49,27 @@
 #define LOW_BATTERY_THRESHOLD 5
 
 // general
-#define SLEEP_ENABLE_DELAY 1500 // in rtos ticks
-#define SLEEP_COMBO_TIME 25     // "milliseconds"
-#define WAKE_COMBO_TIME 5       // "milliseconds"
-#define KNOTS_TO_MPH 1.1507795  // mulitplier for converting knots to mph
-#define MIN_SPEED 0.5           // minimum number of knots before displaying speed to due resolution limitations
+#define EEPROM_SIZE 100              // reserve 100 bytes within the EEPROM
+#define SHORT_PRESS_DURATION_FLOOR 5 // in rtos ticks
+#define LONG_PRESS_DURATION_FLOOR 50 // in rtos ticks
+#define SLEEP_ENABLE_DELAY 1500      // in rtos ticks
+#define SLEEP_COMBO_TIME 100         // in rtos ticks
+#define WAKE_COMBO_TIME 5            // in rtos ticks
+#define KNOTS_TO_MPH 1.1507795       // mulitplier for converting knots to mph
+#define MIN_SPEED 0.5                // minimum number of knots before displaying speed to due resolution limitations
 #define INIT_OPERATING_YEAR 2024
 #define SLEEP_BUTTON_COMBO_BITMASK 0x000000003 // hex value representing the pins 0-39 as bits (bits 1 and 2 are selected)
 #define RADIUS_OF_EARTH 6378.137               // in km
+#define WP_1_LAT_NVS_KEY "wp1-lat"
+#define WP_1_LONG_NVS_KEY "wp1-long"
+#define WP_2_LAT_NVS_KEY "wp2-lat"
+#define WP_2_LONG_NVS_KEY "wp2-long"
+#define WP_3_LAT_NVS_KEY "wp3-lat"
+#define WP_3_LONG_NVS_KEY "wp3-long"
+#define WP_4_LAT_NVS_KEY "wp4-lat"
+#define WP_4_LONG_NVS_KEY "wp4-long"
+#define WP_5_LAT_NVS_KEY "wp5-lat"
+#define WP_5_LONG_NVS_KEY "wp5-long"
 
 // tasks
 #define EXEC_CORE 0
@@ -80,6 +94,21 @@
  * @brief
  */
 SystemDataType systemManager = {
+    .inputFlags =
+        {
+            .selectShortPress = false,
+            .selectLongPress = false,
+
+            .optionShortPress = false,
+            .optionLongPress = false,
+
+            .returnShortPress = false,
+            .returnLongPress = false,
+
+            .specialShortPress = false,
+            .specialLongPress = false,
+        },
+
     .power =
         {
             .lowBatteryModeEnable = false,
@@ -97,7 +126,6 @@ SystemDataType systemManager = {
         {
             .displayMode = GPS_MODE,
             .previousDisplayMode = ERROR_MODE,
-            .specialSelected = false,
             .displayRefreshCounter = 0,
         },
 
@@ -115,10 +143,7 @@ SystemDataType systemManager = {
             .longitude = 0.0f,
             .altitude = 0.0f,
 
-            .waypoint = {
-                .waypointLatitude = 0.0f,
-                .waypointLongitude = 0.0f,
-            },
+            .waypoints = {},
 
             .speed = 0.0f,
             .angle = 0.0f,
@@ -158,6 +183,10 @@ DebuggerType debugger = {
     .displayTaskPreviousCount = 0,
 };
 
+// Non-voltile storage
+Preferences wpStorage;
+WaypointCoordinatesType wpVector = {};
+
 // battery management
 Adafruit_MAX17048 batteryModule; // hardware dedicated
 
@@ -168,7 +197,16 @@ Adafruit_GPS gpsModule; // hardware dedicated
 Adafruit_ST7789 displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // hardware dedicated
 
 // io
-int sleepComboCounter;
+int selectButtonCounter = 0;
+bool selectButtonToggle = false;
+
+int optionButtonCounter = 0;
+bool optionButtonToggle = false;
+
+int returnButtonCounter = 0;
+int specialComboCounter = 0;
+int sleepComboCounter = 0;
+int waypointSelector = 0;
 
 // semaphore
 SemaphoreHandle_t xSemaphore = NULL;
@@ -196,11 +234,12 @@ void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
 // helpers
-float CalculateWaypointDistance();
-float CalculateWaypointBearing();
+float CalculateWaypointDistance(WaypointCoordinatesType waypoint);
+float CalculateWaypointBearing(WaypointCoordinatesType waypoint);
 double DegreesToRadians(float degrees);
 String TaskStateToString(eTaskState state);
 bool IsValidDate();
+void ButtonInputHandler();
 
 // display
 void DisplayGpsData();
@@ -209,6 +248,7 @@ void DisplayBattery();
 void DisplayStatusBar();
 void DisplayError();
 void DisplayFlashlight();
+void DisplayWaypointInputTool();
 
 /*
 ===============================================================================================
@@ -247,7 +287,7 @@ void setup()
 
   // io
   pinMode(SELECT_BUTTON, INPUT);
-  pinMode(NEXT_BUTTON, INPUT);
+  pinMode(OPTION_BUTTON, INPUT);
   pinMode(RETURN_BUTTON, INPUT);
 
   // gps
@@ -265,6 +305,45 @@ void setup()
 
   Serial.printf("gpio init [ success ]\n");
   setup.ioActive = true;
+  // ------------------------------------------------------------------------- //
+
+  // -------------------------- initialize EEPROM ----------------------------- //
+  if (wpStorage.begin("wp-storage", false)) // init read/write nvs depot
+  {
+    Serial.printf("nvs init: [ success ]\n");
+
+    float tmpLat, tmpLong;
+    tmpLat = wpStorage.getFloat(WP_1_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_1_LONG_NVS_KEY, -99);
+    WaypointCoordinatesType wp1 = {tmpLat, tmpLong};
+
+    wpStorage.getFloat(WP_2_LAT_NVS_KEY, -99);
+    wpStorage.getFloat(WP_2_LONG_NVS_KEY, -99);
+    WaypointCoordinatesType wp2 = {tmpLat, tmpLong};
+
+    wpStorage.getFloat(WP_3_LAT_NVS_KEY, -99);
+    wpStorage.getFloat(WP_3_LONG_NVS_KEY, -99);
+    WaypointCoordinatesType wp3 = {tmpLat, tmpLong};
+
+    wpStorage.getFloat(WP_4_LAT_NVS_KEY, -99);
+    wpStorage.getFloat(WP_4_LONG_NVS_KEY, -99);
+    WaypointCoordinatesType wp4 = {tmpLat, tmpLong};
+
+    wpStorage.getFloat(WP_5_LAT_NVS_KEY, -99);
+    wpStorage.getFloat(WP_5_LONG_NVS_KEY, -99);
+    WaypointCoordinatesType wp5 = {tmpLat, tmpLong};
+
+    // save to dynamic memory
+    systemManager.gps.waypoints.at(0) = wp1;
+    systemManager.gps.waypoints.at(1) = wp2;
+    systemManager.gps.waypoints.at(2) = wp3;
+    systemManager.gps.waypoints.at(3) = wp4;
+    systemManager.gps.waypoints.at(4) = wp5;
+  }
+  else
+  {
+    Serial.printf("nvs init: [ failed ]\n");
+  }
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize battery --------------------------- //
@@ -419,30 +498,7 @@ void IoTask(void *pvParameters)
     if (xSemaphoreGive(xSemaphore))
     {
       // buttons
-      if (digitalRead(SELECT_BUTTON) == LOW)
-      {
-        systemManager.display.specialSelected = !systemManager.display.specialSelected;
-      }
-
-      if (digitalRead(NEXT_BUTTON) == HIGH) // next button
-      {
-        systemManager.display.displayMode = static_cast<DisplayModeType>(systemManager.display.displayMode + 1);
-        if (static_cast<int>(systemManager.display.displayMode) > (ERROR_MODE - 1))
-        {
-          systemManager.display.displayMode = GPS_MODE;
-        }
-      }
-
-      if (digitalRead(RETURN_BUTTON) == HIGH) // return button
-      {
-        systemManager.display.displayMode = GPS_MODE;
-      }
-
-      // flashlight mode
-      if (digitalRead(SELECT_BUTTON) == LOW && digitalRead(NEXT_BUTTON) == HIGH)
-      {
-        systemManager.display.displayMode = FLASHLIGHT_MODE;
-      }
+      ButtonInputHandler();
 
       // --- battery --- //
       systemManager.power.batteryPercent = batteryModule.cellPercent();
@@ -461,34 +517,15 @@ void IoTask(void *pvParameters)
       // --- low battery logic --- //
 
       // --- sleep logic --- //
-      if (digitalRead(RETURN_BUTTON) == LOW && digitalRead(NEXT_BUTTON) == LOW)
+      if (systemManager.power.sleepModeEnable)
       {
-        sleepComboCounter++;
-      }
-      else
-      {
-        sleepComboCounter = 0;
-      }
-
-      if (sleepComboCounter >= SLEEP_COMBO_TIME)
-      {
-        systemManager.power.sleepModeEnable = true;
-
         vTaskDelay(SLEEP_ENABLE_DELAY); // delay sleep actions
 
         // turn off display and gps module power
         digitalWrite(GPS_ENABLE_PIN, LOW);
         digitalWrite(TFT_I2C_POWER, LOW);
+
         esp_deep_sleep_start();
-      }
-      else if (systemManager.power.sleepModeEnable == true && sleepComboCounter > WAKE_COMBO_TIME && sleepComboCounter < 25)
-      {
-        systemManager.display.displayMode = GPS_MODE;
-
-        systemManager.power.sleepModeEnable = false;
-
-        // turn on display and gps module power
-        digitalWrite(TFT_I2C_POWER, HIGH);
       }
       // --- sleep logic --- //
     }
@@ -713,14 +750,14 @@ double DegreesToRadians(float degrees)
 /**
  * use the haversine formula to calculate the disance between to gps points on earth
  */
-float CalculateWaypointDistance()
+float CalculateWaypointDistance(WaypointCoordinatesType waypoint)
 {
   // inits
   double distance;
   double currentLatInRad = DegreesToRadians(displayTaskDataCopy.gps.latitude);
   double currentLongInRad = DegreesToRadians(displayTaskDataCopy.gps.longitude);
-  double waypointLat = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLatitude);
-  double waypointLong = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLongitude);
+  double waypointLat = DegreesToRadians(waypoint.waypointLatitude);
+  double waypointLong = DegreesToRadians(waypoint.waypointLongitude);
 
   // calculate!
   float firstTerm = pow(sin((waypointLat - currentLatInRad) / 2), 2);
@@ -733,14 +770,14 @@ float CalculateWaypointDistance()
 /**
  * use the a funky formula to calculate the bearing from gps point 1 to gps point 2
  */
-float CalculateWaypointBearing()
+float CalculateWaypointBearing(WaypointCoordinatesType waypoint)
 {
   // inits
   double bearing;
   double currentLatInRad = DegreesToRadians(displayTaskDataCopy.gps.latitude);
   double currentLongInRad = DegreesToRadians(displayTaskDataCopy.gps.longitude);
-  double waypointLat = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLatitude);
-  double waypointLong = DegreesToRadians(displayTaskDataCopy.gps.waypoint.waypointLongitude);
+  double waypointLat = DegreesToRadians(waypoint.waypointLatitude);
+  double waypointLong = DegreesToRadians(waypoint.waypointLongitude);
 
   // calculate!
   float numerator = sin(waypointLong - currentLatInRad) * cos(waypointLat);
@@ -800,6 +837,110 @@ bool IsValidDate()
     return false;
   }
   // return (data.year >= INIT_OPERATING_YEAR) ? true : false;
+}
+
+/**
+ * @brief handler for setting flags for button inputs
+ */
+void ButtonInputHandler()
+{
+  // --- select button --- //
+  if (digitalRead(SELECT_BUTTON) == LOW)
+  {
+    selectButtonCounter++;
+  }
+  else
+  {
+    selectButtonCounter = 0;
+  }
+
+  if (selectButtonCounter > SHORT_PRESS_DURATION_FLOOR && selectButtonCounter < LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.selectShortPress = true;
+  }
+
+  if (selectButtonCounter > LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.selectLongPress = true;
+  }
+  // --- select button --- //
+
+  // --- option button --- //
+  if (digitalRead(OPTION_BUTTON) == HIGH)
+  {
+    optionButtonCounter++;
+  }
+  else
+  {
+    optionButtonCounter = 0;
+  }
+
+  if (optionButtonCounter > SHORT_PRESS_DURATION_FLOOR && optionButtonCounter < LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.optionShortPress = true;
+  }
+
+  if (optionButtonCounter > LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.optionLongPress = true;
+  }
+  // --- option button --- //
+
+  // --- return button --- //
+  if (digitalRead(RETURN_BUTTON) == HIGH)
+  {
+    returnButtonCounter++;
+  }
+  else
+  {
+    returnButtonCounter = 0;
+  }
+
+  if (returnButtonCounter > SHORT_PRESS_DURATION_FLOOR && returnButtonCounter < LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.returnShortPress = true;
+  }
+
+  if (returnButtonCounter > LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.returnLongPress = true;
+  }
+  // --- return button --- //
+
+  // --- special combo --- //
+  if (digitalRead(SELECT_BUTTON) == LOW && digitalRead(OPTION_BUTTON) == HIGH)
+  {
+    specialComboCounter++;
+  }
+
+  if (specialComboCounter > SHORT_PRESS_DURATION_FLOOR && specialComboCounter < LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.specialShortPress = true;
+    specialComboCounter = 0;
+  }
+
+  if (specialComboCounter > LONG_PRESS_DURATION_FLOOR)
+  {
+    systemManager.inputFlags.specialLongPress = true;
+    specialComboCounter = 0;
+  }
+  // --- special combo --- //
+
+  // --- sleep combo --- //
+  if (digitalRead(RETURN_BUTTON) == LOW && digitalRead(OPTION_BUTTON) == LOW)
+  {
+    sleepComboCounter++;
+  }
+  else
+  {
+    sleepComboCounter = 0;
+  }
+
+  if (sleepComboCounter >= SLEEP_COMBO_TIME)
+  {
+    systemManager.power.sleepModeEnable = true;
+  }
+  // --- sleep combo --- //
 }
 
 /*
@@ -942,12 +1083,64 @@ void DisplayWaypoint()
   displayModule.setCursor(75, 100);
   displayModule.printf("[ waypoints ]");
 
-  // display distance and bearing
-  displayModule.setCursor(0, 80);
-  displayModule.printf("distance: %f.2 km", CalculateWaypointDistance());
+  // waypoint selector
+  // use short option to cycle through preset waypoints
+  if (displayTaskDataCopy.inputFlags.optionShortPress)
+  {
+    // reset flag
+    displayTaskDataCopy.inputFlags.optionShortPress = false;
 
-  displayModule.setCursor(0, 100);
-  displayModule.printf("bearing: %f.0 deg", CalculateWaypointBearing());
+    // increment selected waypoint
+    waypointSelector++;
+
+    if (waypointSelector > displayTaskDataCopy.gps.waypoints.size() - 1)
+    {
+      waypointSelector = 0;
+    }
+  }
+  displayModule.setCursor(0, 20);
+  displayModule.setTextColor(ST77XX_BLACK, ST77XX_MAGENTA);
+  displayModule.printf("wypt: %d", waypointSelector);
+
+  // display waypoint coordinates
+  displayModule.setCursor(0, 30);
+  displayModule.printf("lat: %f.4", displayTaskDataCopy.gps.waypoints.at(waypointSelector).waypointLatitude);
+
+  displayModule.setCursor(0, 40);
+  displayModule.printf("long: %f.4", displayTaskDataCopy.gps.waypoints.at(waypointSelector).waypointLongitude);
+
+  // use long option to open waypoint input
+  if (displayTaskDataCopy.inputFlags.optionLongPress)
+  {
+    // reset flag
+    displayTaskDataCopy.inputFlags.optionLongPress = false;
+
+    // show waypoint input tool
+    displayModule.fillScreen(ST77XX_BLACK);
+    DisplayWaypointInputTool();
+  }
+
+  // do and then show calcuations on select long press
+  if (displayTaskDataCopy.inputFlags.selectLongPress)
+  {
+    // reset flag
+    displayTaskDataCopy.inputFlags.selectLongPress = false;
+
+    // inits
+    displayModule.setCursor(0, 80);
+    displayModule.printf("distance: %f.2 km", CalculateWaypointDistance(displayTaskDataCopy.gps.waypoints.at(waypointSelector)));
+
+    displayModule.setCursor(0, 100);
+    displayModule.printf("bearing: %f.0 deg", CalculateWaypointBearing(displayTaskDataCopy.gps.waypoints.at(waypointSelector)));
+  }
+  else
+  {
+    displayModule.setCursor(0, 80);
+    displayModule.printf("distance: ~ km     ");
+
+    displayModule.setCursor(0, 100);
+    displayModule.printf("bearing: ~ deg     ");
+  }
 }
 
 /**
@@ -1110,29 +1303,60 @@ void DisplayError()
  */
 void DisplayFlashlight()
 {
-  if (!displayTaskDataCopy.display.specialSelected)
+  if (displayTaskDataCopy.inputFlags.selectShortPress)
   {
-    displayModule.fillScreen(ST77XX_WHITE);
+    // reset flag
+    displayTaskDataCopy.inputFlags.selectShortPress = false;
+    selectButtonToggle = !selectButtonToggle;
   }
-  else
+
+  if (displayTaskDataCopy.inputFlags.optionShortPress)
   {
-    // init screen
-    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    // reset flag
+    displayTaskDataCopy.inputFlags.optionShortPress = false;
+    optionButtonToggle = !optionButtonToggle;
+  }
+
+  if (selectButtonToggle)
+  {
+    if (!optionButtonToggle)
     {
-      displayModule.fillScreen(ST77XX_RED);
-      displayTaskDataCopy.display.displayRefreshCounter++;
+      displayModule.fillScreen(ST77XX_WHITE);
     }
     else
     {
-      displayModule.fillScreen(ST77XX_BLACK);
-      displayTaskDataCopy.display.displayRefreshCounter = 0;
-    }
+      if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+      {
+        displayModule.fillScreen(ST77XX_RED);
+        displayTaskDataCopy.display.displayRefreshCounter++;
+      }
+      else
+      {
+        displayModule.fillScreen(ST77XX_BLACK);
+        displayTaskDataCopy.display.displayRefreshCounter = 0;
+      }
 
-    displayModule.setTextSize(2);
-    displayModule.setTextColor(ST77XX_RED);
-    displayModule.setCursor(50, 100);
-    displayModule.printf("[ emergency light ]");
+      displayModule.setTextSize(2);
+      displayModule.setTextColor(ST77XX_RED);
+      displayModule.setCursor(50, 100);
+      displayModule.printf("[ emergency light ]");
+    }
   }
+  else
+  {
+    displayModule.fillScreen(ST77XX_BLACK);
+  }
+}
+
+/**
+ * @brief gui for inputting a new waypoint
+ */
+void DisplayWaypointInputTool()
+{
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  displayModule.setCursor(75, 100);
+  displayModule.printf("[ waypoint input tool ]");
 }
 
 /*
