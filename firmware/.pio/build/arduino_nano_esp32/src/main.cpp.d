@@ -184,6 +184,7 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/Adafruit_GPS.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/Adafruit_PMTK.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/NMEA_data.h \

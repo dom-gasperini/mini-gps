@@ -44,12 +44,12 @@
 // i2c
 #define I2C_FREQUENCY 115200
 #define I2C_GPS_ADDR 0x10
-#define GPS_STANDBY_COMMAND "$PMTK161, 0 * 28"
 #define BATT_MGMT_ADDR 0x36
 #define LOW_BATTERY_THRESHOLD 5
 
 // general
-#define EEPROM_SIZE 100              // reserve 100 bytes within the EEPROM
+#define FIRMWARE_MAJOR 5
+#define FIRMWARE_MINOR 0
 #define SHORT_PRESS_DURATION_FLOOR 5 // in rtos ticks
 #define LONG_PRESS_DURATION_FLOOR 50 // in rtos ticks
 #define SLEEP_ENABLE_DELAY 1500      // in rtos ticks
@@ -1167,6 +1167,10 @@ void DisplayBattery()
 
   displayModule.setCursor(0, 60);
   displayModule.printf("alert status: %x", displayTaskDataCopy.power.alertStatus);
+
+  // firmware verison info
+  displayModule.setCursor(0, 100);
+  displayModule.printf("firmware version: v%d.%d", FIRMWARE_MAJOR, FIRMWARE_MINOR);
 }
 
 /**
