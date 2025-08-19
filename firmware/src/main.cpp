@@ -19,10 +19,10 @@
 
 // core
 #include <Arduino.h>
-#include <rtc.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Preferences.h>
+#include <rtc.h>
 #include <vector>
 
 // hardware specific
@@ -83,6 +83,7 @@
 
 // debugging
 #define ENABLE_DEBUGGING false
+#define DEBUG_BOOT_DELAY 3000 // in milliseconds
 
 /*
 ===============================================================================================
@@ -248,6 +249,7 @@ void DisplayStatusBar();
 void DisplayError();
 void DisplayFlashlight();
 void DisplayWaypointInputTool();
+void DisplaySleepModeAlert();
 
 /*
 ===============================================================================================
@@ -262,8 +264,7 @@ void setup()
 
   if (debugger.debugEnabled)
   {
-    // delay startup by 3 seconds
-    vTaskDelay(3000);
+    delay(DEBUG_BOOT_DELAY);
   }
 
   InitDeviceType setup = {
@@ -279,6 +280,9 @@ void setup()
 
   // -------------------------- initialize GPIO ------------------------------ //
   // sleep
+  gpio_deep_sleep_hold_en();
+  gpio_hold_en((gpio_num_t)GPS_ENABLE_PIN);
+
   // gpio_wakeup_enable((gpio_num_t)RETURN_BUTTON, GPIO_INTR_HIGH_LEVEL); // light sleep single button wake up
   // esp_sleep_enable_ext1_wakeup(SLEEP_BUTTON_COMBO_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH); // deep sleep muli button wakeup
   esp_sleep_enable_ext0_wakeup((gpio_num_t)RETURN_BUTTON, ESP_EXT1_WAKEUP_ANY_HIGH); // deep sleep single button wake up
@@ -295,7 +299,7 @@ void setup()
 
   // tft
   pinMode(TFT_BACKLITE, OUTPUT);
-  digitalWrite(TFT_BACKLITE, HIGH); // turn on display backlight
+  digitalWrite(TFT_BACKLITE, LOW); // set backlight off in case of auto pullhigh in hal | TODO: test & remove as needed
 
   // tft and i2c power toggle
   pinMode(TFT_I2C_POWER, OUTPUT);    // if there are issues with power, try pulling this pin high manually
@@ -363,6 +367,9 @@ void setup()
   // -------------------------- initialize display --------------------------- //
   displayModule.init(135, 240); // ST7789 (240x135)
   displayModule.setRotation(1);
+  displayModule.fillScreen(ST77XX_BLACK); // default boot screen fill is white
+  // delay(25);  // if the fill screen is too slow uncomment
+  digitalWrite(TFT_BACKLITE, HIGH); // turn on display backlight
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
@@ -381,7 +388,7 @@ void setup()
   gpsModule.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
 
   // set gps position fix rate
-  gpsModule.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
+  // gpsModule.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
 
   // request updates on antenna status (don't need this on)
   // gps.sendCommand(PGCMD_ANTENNA);
@@ -397,7 +404,7 @@ void setup()
   // task setup status
   Serial.printf("\ntask setup status:\n");
   Serial.printf("i/o task setup: %s\n", setup.ioActive ? "complete" : "failed");
-  Serial.printf("i2c task setup: %s\n", setup.gpsActive ? "complete" : "failed");
+  Serial.printf("gps task setup: %s\n", setup.gpsActive ? "complete" : "failed");
   Serial.printf("display task setup %s\n", setup.displayActive ? "complete" : "failed");
 
   // start tasks
@@ -410,7 +417,7 @@ void setup()
 
     if (setup.gpsActive)
     {
-      xTaskCreatePinnedToCore(GpsTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleGps, EXEC_CORE);
+      xTaskCreatePinnedToCore(GpsTask, "gps", TASK_STACK_SIZE, NULL, 1, &xHandleGps, EXEC_CORE);
     }
 
     if (setup.displayActive)
@@ -439,9 +446,9 @@ void setup()
     Serial.printf("i/o task status: disabled!\n");
 
   if (xHandleGps != NULL)
-    Serial.printf("i2c task status: %s\n", TaskStateToString(eTaskGetState(xHandleGps)));
+    Serial.printf("gps task status: %s\n", TaskStateToString(eTaskGetState(xHandleGps)));
   else
-    Serial.printf("i2c task status: disabled!\n");
+    Serial.printf("gps task status: disabled!\n");
 
   if (xHandleDisplay != NULL)
     Serial.printf("display task status: %s\n", TaskStateToString(eTaskGetState(xHandleDisplay)));
@@ -674,6 +681,12 @@ void DisplayTask(void *pvParameters)
       break;
     }
     displayTaskDataCopy.display.previousDisplayMode = displayTaskDataCopy.display.displayMode;
+
+    // sleep
+    if (displayTaskDataCopy.power.sleepModeEnable)
+    {
+      DisplaySleepModeAlert();
+    }
 
     // debugging
     if (debugger.debugEnabled)
@@ -1298,7 +1311,7 @@ void DisplayError()
   displayModule.setTextSize(2);
   displayModule.setTextColor(ST77XX_RED);
   displayModule.setCursor(75, 100);
-  displayModule.printf("[ mode error ]");
+  displayModule.printf("[> mode error <]");
 }
 
 /**
@@ -1342,7 +1355,7 @@ void DisplayFlashlight()
       displayModule.setTextSize(2);
       displayModule.setTextColor(ST77XX_RED);
       displayModule.setCursor(50, 100);
-      displayModule.printf("[ emergency light ]");
+      displayModule.printf("[> emergency light <]");
     }
   }
   else
@@ -1359,7 +1372,18 @@ void DisplayWaypointInputTool()
   displayModule.setTextSize(1);
   displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
   displayModule.setCursor(75, 100);
-  displayModule.printf("[ waypoint input tool ]");
+  displayModule.printf("[> waypoint input tool <]");
+}
+
+/**
+ * @brief while device is entering sleep mode popup
+ */
+void DisplaySleepModeAlert()
+{
+  displayModule.setTextSize(1);
+  displayModule.setCursor(30, 100);
+  displayModule.setTextColor(ST77XX_BLACK, ST77XX_GREEN);
+  displayModule.printf("[> entering hibernation <]");
 }
 
 /*
@@ -1472,7 +1496,7 @@ void PrintSchedulerDebug()
   }
 
   // print
-  Serial.printf("uptime: %d | read io: <%d Hz> (%d) | i2c: <%d Hz> (%d) | display: <%d Hz> (%d) \n",
+  Serial.printf("uptime: %d | read io: <%d Hz> (%d) | gps: <%d Hz> (%d) | display: <%d Hz> (%d) \n",
                 uptime, taskRefreshRate.at(0), debugger.ioTaskCount, taskRefreshRate.at(1), debugger.gpsTaskCount,
                 taskRefreshRate.at(2), debugger.displayTaskCount);
 
