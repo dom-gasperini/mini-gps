@@ -3,7 +3,7 @@
  * @author dom gasperini
  * @brief mini gps
  * @version 5.0
- * @date 2025-08-18
+ * @date 2025-08-20
  *
  * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather Docs)
  * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module Docs)
@@ -75,7 +75,7 @@
 #define EXEC_CORE 0
 #define DISPLAY_CORE 1
 #define IO_REFRESH_RATE 100      // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 10      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define GPS_REFRESH_RATE 10      // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DISPLAY_REFRESH_RATE 100 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000  // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
@@ -118,8 +118,6 @@ SystemDataType systemManager = {
             .batteryPercent = 0.0f,
             .batteryVoltage = 0.0f,
             .batteryChargeRate = 0.0f,
-
-            .chipId = 0,
             .alertStatus = 0,
         },
 
@@ -160,8 +158,6 @@ SystemDataType systemManager = {
 
             .numSats = 0,
         }};
-
-SystemDataType displayTaskDataCopy;
 
 DebuggerType debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
@@ -234,22 +230,24 @@ void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
 // helpers
-float CalculateWaypointDistance(WaypointCoordinatesType waypoint);
-float CalculateWaypointBearing(WaypointCoordinatesType waypoint);
+float CalculateWaypointDistance(SystemDataType sd, WaypointCoordinatesType wp);
+float CalculateWaypointBearing(SystemDataType sd, WaypointCoordinatesType wp);
 double DegreesToRadians(float degrees);
 String TaskStateToString(eTaskState state);
-bool IsValidDate();
-void ButtonInputHandler();
+
+// task abstractions
+InputFlagsType ButtonInputHandler(InputFlagsType iF);
+PowerDataType BatteryManager(PowerDataType pm);
 
 // display
-void DisplayGpsData();
-void DisplayWaypoint();
-void DisplayBattery();
-void DisplayStatusBar();
-void DisplayError();
-void DisplayFlashlight();
-void DisplayWaypointInputTool();
-void DisplaySleepModeAlert();
+void DisplayGpsData(SystemDataType sd);
+void DisplayWaypoint(SystemDataType sd);
+void DisplayBattery(SystemDataType sd);
+void DisplayStatusBar(SystemDataType sd);
+void DisplayError(SystemDataType sd);
+void DisplayFlashlight(SystemDataType sd);
+void DisplayWaypointInputTool(SystemDataType sd);
+void DisplaySleepModeAlert(SystemDataType sd);
 
 /*
 ===============================================================================================
@@ -493,47 +491,46 @@ void setup()
  */
 void IoTask(void *pvParameters)
 {
-  // get task tick
+  // inits
   const TickType_t xFrequency = pdMS_TO_TICKS(IO_REFRESH_RATE);
   TickType_t taskLastWakeTick = xTaskGetTickCount();
+  PowerDataType powerManager;
+  InputFlagsType inputFlags;
+  SystemDataType dataframe;
 
   for (;;)
   {
     // limit task refresh rate
     vTaskDelayUntil(&taskLastWakeTick, xFrequency);
+
+    // buttons
+    dataframe.inputFlags = ButtonInputHandler(inputFlags);
+
+    // battery
+    dataframe.power = BatteryManager(powerManager);
+
+    // sleep logic
+    if (sleepComboCounter >= SLEEP_COMBO_TIME)
+    {
+      dataframe.power.sleepModeEnable = true;
+    }
+
+    if (dataframe.power.sleepModeEnable)
+    {
+      vTaskDelay(SLEEP_ENABLE_DELAY); // delay sleep actions
+
+      // turn off display and gps module power
+      digitalWrite(GPS_ENABLE_PIN, LOW);
+      digitalWrite(TFT_I2C_POWER, LOW);
+
+      esp_deep_sleep_start();
+    }
+
+    // sync data
     if (xSemaphoreGive(xSemaphore))
     {
-      // buttons
-      ButtonInputHandler();
-
-      // --- battery --- //
-      systemManager.power.batteryPercent = batteryModule.cellPercent();
-      systemManager.power.batteryVoltage = batteryModule.cellVoltage();
-      systemManager.power.batteryChargeRate = batteryModule.chargeRate();
-
-      // --- low battery logic --- //
-      if (systemManager.power.batteryPercent <= LOW_BATTERY_THRESHOLD)
-      {
-        systemManager.power.lowBatteryModeEnable = true;
-      }
-      else
-      {
-        systemManager.power.lowBatteryModeEnable = false;
-      }
-      // --- low battery logic --- //
-
-      // --- sleep logic --- //
-      if (systemManager.power.sleepModeEnable)
-      {
-        vTaskDelay(SLEEP_ENABLE_DELAY); // delay sleep actions
-
-        // turn off display and gps module power
-        digitalWrite(GPS_ENABLE_PIN, LOW);
-        digitalWrite(TFT_I2C_POWER, LOW);
-
-        esp_deep_sleep_start();
-      }
-      // --- sleep logic --- //
+      systemManager.inputFlags = inputFlags;
+      systemManager.power = powerManager;
     }
 
     // debugging
@@ -550,66 +547,71 @@ void IoTask(void *pvParameters)
  */
 void GpsTask(void *pvParameters)
 {
-  // get task tick
+  // inits
+  const TickType_t xFrequency = pdMS_TO_TICKS(GPS_REFRESH_RATE);
   TickType_t taskLastWakeTick = xTaskGetTickCount();
+  GpsDataType gpsData;
 
   for (;;)
   {
     // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, I2C_REFRESH_RATE);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
 
+    // read gps data
+    while (gpsModule.read() != 0)
+    {
+      // process gps data
+      if (gpsModule.newNMEAreceived() == true)
+      {
+        gpsModule.parse(gpsModule.lastNMEA()); // this sets the newNMEAreceived() flag to false
+
+        // connection
+        gpsData.connected = gpsModule.fix;
+        gpsData.fixQuality = gpsModule.fixquality;
+
+        gpsData.numSats = gpsModule.satellites;
+        gpsData.dtLastFix = gpsModule.secondsSinceFix();
+        gpsData.dtSinceTime = gpsModule.secondsSinceTime();
+        gpsData.dtSinceTime = gpsModule.secondsSinceDate();
+
+        //  location
+        gpsData.latitude = gpsModule.latitudeDegrees;
+        gpsData.longitude = gpsModule.longitudeDegrees;
+        gpsData.altitude = gpsModule.altitude;
+
+        // vector
+        systemManager.gps.speed = gpsModule.speed; // speed is given in knots
+        gpsData.angle = gpsModule.angle;
+
+        // apply velocity deadband
+        if (gpsData.speed > MIN_SPEED)
+        {
+          gpsData.speed = gpsData.speed * KNOTS_TO_MPH; // convert to mph
+        }
+        else
+        {
+          gpsData.speed = 0.0f;
+          gpsData.angle = 0.0f;
+        }
+
+        // data
+        gpsData.year = gpsModule.year + 2000;
+        gpsData.month = gpsModule.month;
+        gpsData.day = gpsModule.day;
+
+        // time
+        gpsData.hour = gpsModule.hour;
+        systemManager.gps.minute = gpsModule.minute;
+        gpsData.second = gpsModule.seconds;
+
+        gpsData.validDate = (gpsData.year >= INIT_OPERATING_YEAR) ? true : false;
+      }
+    }
+
+    // sync data
     if (xSemaphoreGive(xSemaphore))
     {
-      // read gps data
-      while (gpsModule.read() != 0)
-      {
-        // process gps data
-        if (gpsModule.newNMEAreceived() == true)
-        {
-          gpsModule.parse(gpsModule.lastNMEA()); // this sets the newNMEAreceived() flag to false
-
-          // connection data
-          systemManager.gps.connected = gpsModule.fix;
-          systemManager.gps.fixQuality = gpsModule.fixquality;
-
-          systemManager.gps.numSats = gpsModule.satellites;
-          systemManager.gps.dtLastFix = gpsModule.secondsSinceFix();
-          systemManager.gps.dtSinceTime = gpsModule.secondsSinceTime();
-          systemManager.gps.dtSinceTime = gpsModule.secondsSinceDate();
-
-          // collect location data
-          systemManager.gps.latitude = gpsModule.latitudeDegrees;
-          systemManager.gps.longitude = gpsModule.longitudeDegrees;
-          systemManager.gps.altitude = gpsModule.altitude;
-
-          // collect vector data
-          systemManager.gps.speed = gpsModule.speed; // speed is given in knots
-          systemManager.gps.angle = gpsModule.angle;
-
-          // not enough resolution for accurately measuring very low speeds
-          if (systemManager.gps.speed > MIN_SPEED)
-          {
-            systemManager.gps.speed = systemManager.gps.speed * KNOTS_TO_MPH; // convert to mph
-          }
-          else
-          {
-            systemManager.gps.speed = 0.0f;
-            systemManager.gps.angle = 0.0f;
-          }
-
-          // collect date data
-          systemManager.gps.year = gpsModule.year + 2000;
-          systemManager.gps.month = gpsModule.month;
-          systemManager.gps.day = gpsModule.day;
-
-          // collect time data
-          systemManager.gps.hour = gpsModule.hour;
-          systemManager.gps.minute = gpsModule.minute;
-          systemManager.gps.second = gpsModule.seconds;
-
-          systemManager.gps.validDate = IsValidDate();
-        }
-      }
+      systemManager.gps = gpsData;
     }
 
     // debugging
@@ -630,13 +632,15 @@ void GpsTask(void *pvParameters)
  */
 void DisplayTask(void *pvParameters)
 {
-  // get task tick
+  // inits
+  const TickType_t xFrequency = pdMS_TO_TICKS(DISPLAY_REFRESH_RATE);
   TickType_t taskLastWakeTick = xTaskGetTickCount();
+  SystemDataType sysData;
 
   for (;;)
   {
     // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, DISPLAY_REFRESH_RATE);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
 
     if (xSemaphoreTake(xSemaphore, (TickType_t)0) == pdTRUE)
     {
@@ -647,45 +651,44 @@ void DisplayTask(void *pvParameters)
         semaphoreCount--;
       }
 
-      // copy gps data
-      displayTaskDataCopy = systemManager;
+      sysData = systemManager;
     }
 
     // update display
-    DisplayStatusBar();
+    DisplayStatusBar(sysData);
 
-    if (displayTaskDataCopy.display.displayMode != displayTaskDataCopy.display.previousDisplayMode)
+    if (sysData.display.displayMode != sysData.display.previousDisplayMode)
     {
       displayModule.fillScreen(ST77XX_BLACK);
     }
-    switch (displayTaskDataCopy.display.displayMode)
+    switch (sysData.display.displayMode)
     {
     case GPS_MODE:
-      DisplayGpsData();
+      DisplayGpsData(sysData);
       break;
 
     case WAYPOINT_MODE:
-      DisplayWaypoint();
+      DisplayWaypoint(sysData);
       break;
 
     case BATTERY_MODE:
-      DisplayBattery();
+      DisplayBattery(sysData);
       break;
 
     case FLASHLIGHT_MODE:
-      DisplayFlashlight();
+      DisplayFlashlight(sysData);
       break;
 
     default:
-      DisplayError();
+      DisplayError(sysData);
       break;
     }
-    displayTaskDataCopy.display.previousDisplayMode = displayTaskDataCopy.display.displayMode;
+    sysData.display.previousDisplayMode = sysData.display.displayMode;
 
     // sleep
-    if (displayTaskDataCopy.power.sleepModeEnable)
+    if (sysData.power.sleepModeEnable)
     {
-      DisplaySleepModeAlert();
+      DisplaySleepModeAlert(sysData);
     }
 
     // debugging
@@ -762,12 +765,12 @@ double DegreesToRadians(float degrees)
 /**
  * use the haversine formula to calculate the disance between to gps points on earth
  */
-float CalculateWaypointDistance(WaypointCoordinatesType waypoint)
+float CalculateWaypointDistance(SystemDataType sd, WaypointCoordinatesType waypoint)
 {
   // inits
   double distance;
-  double currentLatInRad = DegreesToRadians(displayTaskDataCopy.gps.latitude);
-  double currentLongInRad = DegreesToRadians(displayTaskDataCopy.gps.longitude);
+  double currentLatInRad = DegreesToRadians(sd.gps.latitude);
+  double currentLongInRad = DegreesToRadians(sd.gps.longitude);
   double waypointLat = DegreesToRadians(waypoint.waypointLatitude);
   double waypointLong = DegreesToRadians(waypoint.waypointLongitude);
 
@@ -782,12 +785,12 @@ float CalculateWaypointDistance(WaypointCoordinatesType waypoint)
 /**
  * use the a funky formula to calculate the bearing from gps point 1 to gps point 2
  */
-float CalculateWaypointBearing(WaypointCoordinatesType waypoint)
+float CalculateWaypointBearing(SystemDataType sd, WaypointCoordinatesType waypoint)
 {
   // inits
   double bearing;
-  double currentLatInRad = DegreesToRadians(displayTaskDataCopy.gps.latitude);
-  double currentLongInRad = DegreesToRadians(displayTaskDataCopy.gps.longitude);
+  double currentLatInRad = DegreesToRadians(sd.gps.latitude);
+  double currentLongInRad = DegreesToRadians(sd.gps.longitude);
   double waypointLat = DegreesToRadians(waypoint.waypointLatitude);
   double waypointLong = DegreesToRadians(waypoint.waypointLongitude);
 
@@ -836,25 +839,9 @@ String TaskStateToString(eTaskState state)
 }
 
 /**
- * @brief determine if the real-time clock data is valid
- */
-bool IsValidDate()
-{
-  if (displayTaskDataCopy.gps.year >= INIT_OPERATING_YEAR)
-  {
-    return true;
-  }
-  else
-  {
-    return false;
-  }
-  // return (data.year >= INIT_OPERATING_YEAR) ? true : false;
-}
-
-/**
  * @brief handler for setting flags for button inputs
  */
-void ButtonInputHandler()
+InputFlagsType ButtonInputHandler(InputFlagsType iF)
 {
   // --- select button --- //
   if (digitalRead(SELECT_BUTTON) == LOW)
@@ -868,12 +855,12 @@ void ButtonInputHandler()
 
   if (selectButtonCounter > SHORT_PRESS_DURATION_FLOOR && selectButtonCounter < LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.selectShortPress = true;
+    iF.selectShortPress = true;
   }
 
   if (selectButtonCounter > LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.selectLongPress = true;
+    iF.selectLongPress = true;
   }
   // --- select button --- //
 
@@ -889,12 +876,12 @@ void ButtonInputHandler()
 
   if (optionButtonCounter > SHORT_PRESS_DURATION_FLOOR && optionButtonCounter < LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.optionShortPress = true;
+    iF.optionShortPress = true;
   }
 
   if (optionButtonCounter > LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.optionLongPress = true;
+    iF.optionLongPress = true;
   }
   // --- option button --- //
 
@@ -910,12 +897,12 @@ void ButtonInputHandler()
 
   if (returnButtonCounter > SHORT_PRESS_DURATION_FLOOR && returnButtonCounter < LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.returnShortPress = true;
+    iF.returnShortPress = true;
   }
 
   if (returnButtonCounter > LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.returnLongPress = true;
+    iF.returnLongPress = true;
   }
   // --- return button --- //
 
@@ -927,13 +914,13 @@ void ButtonInputHandler()
 
   if (specialComboCounter > SHORT_PRESS_DURATION_FLOOR && specialComboCounter < LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.specialShortPress = true;
+    iF.specialShortPress = true;
     specialComboCounter = 0;
   }
 
   if (specialComboCounter > LONG_PRESS_DURATION_FLOOR)
   {
-    systemManager.inputFlags.specialLongPress = true;
+    iF.specialLongPress = true;
     specialComboCounter = 0;
   }
   // --- special combo --- //
@@ -947,12 +934,32 @@ void ButtonInputHandler()
   {
     sleepComboCounter = 0;
   }
-
-  if (sleepComboCounter >= SLEEP_COMBO_TIME)
-  {
-    systemManager.power.sleepModeEnable = true;
-  }
   // --- sleep combo --- //
+
+  return iF;
+}
+
+/**
+ * @brief
+ */
+PowerDataType BatteryManager(PowerDataType pm)
+{
+  pm.batteryPercent = batteryModule.cellPercent();
+  pm.batteryVoltage = batteryModule.cellVoltage();
+  pm.batteryChargeRate = batteryModule.chargeRate();
+
+  // --- low battery logic --- //
+  if (pm.batteryPercent <= LOW_BATTERY_THRESHOLD)
+  {
+    pm.lowBatteryModeEnable = true;
+  }
+  else
+  {
+    pm.lowBatteryModeEnable = false;
+  }
+  // --- low battery logic --- //
+
+  return pm;
 }
 
 /*
@@ -964,22 +971,22 @@ void ButtonInputHandler()
 /**
  * @brief general gps data screen
  */
-void DisplayGpsData()
+void DisplayGpsData(SystemDataType sd)
 {
   // location
   int minSats = 3;
   displayModule.setTextSize(1);
   displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
-  if (displayTaskDataCopy.gps.numSats >= minSats)
+  if (sd.gps.numSats >= minSats)
   {
     displayModule.setCursor(0, 10);
-    displayModule.printf("latitude: %.5f", displayTaskDataCopy.gps.latitude);
+    displayModule.printf("latitude: %.5f", sd.gps.latitude);
 
     displayModule.setCursor(0, 20);
-    displayModule.printf("longitude: %.5f", displayTaskDataCopy.gps.longitude);
+    displayModule.printf("longitude: %.5f", sd.gps.longitude);
 
     displayModule.setCursor(0, 30);
-    displayModule.printf("altitude: %d m        ", (int)displayTaskDataCopy.gps.altitude);
+    displayModule.printf("altitude: %d m        ", (int)sd.gps.altitude);
   }
   else
   {
@@ -996,9 +1003,9 @@ void DisplayGpsData()
   // speed
   displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
   displayModule.setCursor(0, 50);
-  if (displayTaskDataCopy.gps.numSats > minSats)
+  if (sd.gps.numSats > minSats)
   {
-    displayModule.printf("speed: %.1f mph", displayTaskDataCopy.gps.speed);
+    displayModule.printf("speed: %.1f mph", sd.gps.speed);
   }
   else
   {
@@ -1008,9 +1015,9 @@ void DisplayGpsData()
   // angle
   displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
   displayModule.setCursor(0, 60);
-  if (displayTaskDataCopy.gps.speed > MIN_SPEED)
+  if (sd.gps.speed > MIN_SPEED)
   {
-    displayModule.printf("heading: %d deg", (int)displayTaskDataCopy.gps.angle);
+    displayModule.printf("heading: %d deg", (int)sd.gps.angle);
   }
   else
   {
@@ -1018,14 +1025,14 @@ void DisplayGpsData()
   }
 
   // date and time
-  if (displayTaskDataCopy.gps.validDate)
+  if (sd.gps.validDate)
   {
     displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
     displayModule.setCursor(0, 80);
-    displayModule.printf("date: %d / %d / %d    ", displayTaskDataCopy.gps.year, displayTaskDataCopy.gps.month, displayTaskDataCopy.gps.day);
+    displayModule.printf("date: %d / %d / %d    ", sd.gps.year, sd.gps.month, sd.gps.day);
 
     displayModule.setCursor(0, 90);
-    displayModule.printf("time: %d:%d:%d (UTC)      ", displayTaskDataCopy.gps.hour, displayTaskDataCopy.gps.minute, displayTaskDataCopy.gps.second);
+    displayModule.printf("time: %d:%d:%d (UTC)      ", sd.gps.hour, sd.gps.minute, sd.gps.second);
   }
   else
   {
@@ -1042,35 +1049,35 @@ void DisplayGpsData()
   displayModule.setCursor(0, 110);
   displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   displayModule.printf("sats: ");
-  if (displayTaskDataCopy.gps.numSats == 0)
+  if (sd.gps.numSats == 0)
   {
     displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
   }
-  if (displayTaskDataCopy.gps.numSats > 0 && displayTaskDataCopy.gps.numSats <= minSats)
+  if (sd.gps.numSats > 0 && sd.gps.numSats <= minSats)
   {
     displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
   }
-  if (displayTaskDataCopy.gps.numSats > minSats)
+  if (sd.gps.numSats > minSats)
   {
     displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
   }
-  displayModule.printf("%d ", displayTaskDataCopy.gps.numSats);
+  displayModule.printf("%d ", sd.gps.numSats);
 
   // time since last fix
   displayModule.setCursor(0, 120);
   displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   displayModule.printf("dt-fix: ");
-  if (displayTaskDataCopy.gps.validDate)
+  if (sd.gps.validDate)
   {
-    if (displayTaskDataCopy.gps.dtLastFix < 1.0)
+    if (sd.gps.dtLastFix < 1.0)
     {
       displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
-      displayModule.printf("%.2f seconds    ", displayTaskDataCopy.gps.dtLastFix);
+      displayModule.printf("%.2f seconds    ", sd.gps.dtLastFix);
     }
-    else if (displayTaskDataCopy.gps.dtLastFix < 120 && displayTaskDataCopy.gps.dtLastFix > 1.0) // been a bit since a connection
+    else if (sd.gps.dtLastFix < 120 && sd.gps.dtLastFix > 1.0) // been a bit since a connection
     {
       displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
-      displayModule.printf("%.2f seconds    ", displayTaskDataCopy.gps.dtLastFix);
+      displayModule.printf("%.2f seconds    ", sd.gps.dtLastFix);
     }
     else // longer than a minute without a fix
     {
@@ -1088,7 +1095,7 @@ void DisplayGpsData()
 /**
  * @brief the waypoint screen
  */
-void DisplayWaypoint()
+void DisplayWaypoint(SystemDataType sd)
 {
   displayModule.setTextSize(1);
   displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
@@ -1097,15 +1104,15 @@ void DisplayWaypoint()
 
   // waypoint selector
   // use short option to cycle through preset waypoints
-  if (displayTaskDataCopy.inputFlags.optionShortPress)
+  if (sd.inputFlags.optionShortPress)
   {
     // reset flag
-    displayTaskDataCopy.inputFlags.optionShortPress = false;
+    sd.inputFlags.optionShortPress = false;
 
     // increment selected waypoint
     waypointSelector++;
 
-    if (waypointSelector > displayTaskDataCopy.gps.waypoints.size() - 1)
+    if (waypointSelector > sd.gps.waypoints.size() - 1)
     {
       waypointSelector = 0;
     }
@@ -1116,34 +1123,35 @@ void DisplayWaypoint()
 
   // display waypoint coordinates
   displayModule.setCursor(0, 30);
-  displayModule.printf("lat: %f.4", displayTaskDataCopy.gps.waypoints.at(waypointSelector).waypointLatitude);
+  displayModule.printf("lat: %f.4", sd.gps.waypoints.at(waypointSelector).waypointLatitude);
 
   displayModule.setCursor(0, 40);
-  displayModule.printf("long: %f.4", displayTaskDataCopy.gps.waypoints.at(waypointSelector).waypointLongitude);
+  displayModule.printf("long: %f.4", sd.gps.waypoints.at(waypointSelector).waypointLongitude);
 
   // use long option to open waypoint input
-  if (displayTaskDataCopy.inputFlags.optionLongPress)
+  if (sd.inputFlags.optionLongPress)
   {
     // reset flag
-    displayTaskDataCopy.inputFlags.optionLongPress = false;
+    sd.inputFlags.optionLongPress = false;
 
     // show waypoint input tool
     displayModule.fillScreen(ST77XX_BLACK);
-    DisplayWaypointInputTool();
+    DisplayWaypointInputTool(sd);
   }
 
   // do and then show calcuations on select long press
-  if (displayTaskDataCopy.inputFlags.selectLongPress)
+  if (sd.inputFlags.selectLongPress)
   {
     // reset flag
-    displayTaskDataCopy.inputFlags.selectLongPress = false;
+    sd.inputFlags.selectLongPress = false;
+    WaypointCoordinatesType waypoint = sd.gps.waypoints.at(waypointSelector);
 
     // inits
     displayModule.setCursor(0, 80);
-    displayModule.printf("distance: %f.2 km", CalculateWaypointDistance(displayTaskDataCopy.gps.waypoints.at(waypointSelector)));
+    displayModule.printf("distance: %f.2 km", CalculateWaypointDistance(sd, waypoint));
 
     displayModule.setCursor(0, 100);
-    displayModule.printf("bearing: %f.0 deg", CalculateWaypointBearing(displayTaskDataCopy.gps.waypoints.at(waypointSelector)));
+    displayModule.printf("bearing: %f.0 deg", CalculateWaypointBearing(sd, waypoint));
   }
   else
   {
@@ -1158,27 +1166,28 @@ void DisplayWaypoint()
 /**
  * @brief the battery information screen
  */
-void DisplayBattery()
+void DisplayBattery(SystemDataType sd)
 {
   displayModule.setTextSize(1);
   displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
 
   // display battery stats
   displayModule.setCursor(0, 10);
-  displayModule.printf("percentage: %f.1%", displayTaskDataCopy.power.batteryPercent);
+  displayModule.printf("percentage: %f.1%", sd.power.batteryPercent);
 
   displayModule.setCursor(0, 20);
-  displayModule.printf("percentage: %f.2v", displayTaskDataCopy.power.batteryVoltage);
+  displayModule.printf("percentage: %f.2v", sd.power.batteryVoltage);
 
   displayModule.setCursor(0, 30);
-  displayModule.printf("rate: %f.2 %/h", displayTaskDataCopy.power.batteryChargeRate);
+  displayModule.printf("rate: %f.2 %/h", sd.power.batteryChargeRate);
 
   // display battery manager chip stats
-  displayModule.setCursor(0, 50);
-  displayModule.printf("chip id: %d", displayTaskDataCopy.power.chipId);
+  // displayModule.setCursor(0, 50);
+  // displayModule.printf("chip id: %d", sd.power.chipId);
+  displayModule.printf("chip id: TODO");
 
   displayModule.setCursor(0, 60);
-  displayModule.printf("alert status: %x", displayTaskDataCopy.power.alertStatus);
+  displayModule.printf("alert status: %x", sd.power.alertStatus);
 
   // firmware verison info
   displayModule.setCursor(0, 100);
@@ -1188,7 +1197,7 @@ void DisplayBattery()
 /**
  * @brief display a status bar at the top of the screen with important information
  */
-void DisplayStatusBar()
+void DisplayStatusBar(SystemDataType sd)
 {
   // --- mode --- //
   String mode;
@@ -1196,7 +1205,7 @@ void DisplayStatusBar()
   int underscoreLength;
   displayModule.setCursor(5, 5);
   displayModule.setTextSize(1);
-  switch (displayTaskDataCopy.display.displayMode)
+  switch (sd.display.displayMode)
   {
   case GPS_MODE:
     mode = "gps";
@@ -1229,43 +1238,43 @@ void DisplayStatusBar()
   // --- mode --- //
 
   // --- gps fix status --- //
-  if (displayTaskDataCopy.gps.fixQuality == 1) // fix
+  if (sd.gps.fixQuality == 1) // fix
   {
-    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    if (sd.display.displayRefreshCounter == 0)
     {
       displayModule.setTextColor(ST77XX_BLACK, ST77XX_GREEN);
-      displayTaskDataCopy.display.displayRefreshCounter++;
+      sd.display.displayRefreshCounter++;
     }
     else
     {
       displayModule.setTextColor(ST77XX_GREEN, ST77XX_WHITE);
-      displayTaskDataCopy.display.displayRefreshCounter = 0;
+      sd.display.displayRefreshCounter = 0;
     }
   }
-  else if (displayTaskDataCopy.gps.validDate) // no fix but valid rtc data
+  else if (sd.gps.validDate) // no fix but valid rtc data
   {
-    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    if (sd.display.displayRefreshCounter == 0)
     {
       displayModule.setTextColor(ST77XX_BLACK, ST77XX_ORANGE);
-      displayTaskDataCopy.display.displayRefreshCounter++;
+      sd.display.displayRefreshCounter++;
     }
     else
     {
       displayModule.setTextColor(ST77XX_ORANGE, ST77XX_WHITE);
-      displayTaskDataCopy.display.displayRefreshCounter = 0;
+      sd.display.displayRefreshCounter = 0;
     }
   }
   else // no fix and no rtc data
   {
-    if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+    if (sd.display.displayRefreshCounter == 0)
     {
       displayModule.setTextColor(ST77XX_BLACK, ST77XX_RED);
-      displayTaskDataCopy.display.displayRefreshCounter++;
+      sd.display.displayRefreshCounter++;
     }
     else
     {
       displayModule.setTextColor(ST77XX_RED, ST77XX_WHITE);
-      displayTaskDataCopy.display.displayRefreshCounter = 0;
+      sd.display.displayRefreshCounter = 0;
     }
   }
   displayModule.setTextSize(1);
@@ -1276,15 +1285,15 @@ void DisplayStatusBar()
   // --- battery --- //
   // draw battery symbol
   displayModule.setCursor(220, 10);
-  if (displayTaskDataCopy.power.batteryPercent >= 50.0)
+  if (sd.power.batteryPercent >= 50.0)
   {
     displayModule.drawRoundRect(220, 10, 25, 10, 2, ST77XX_GREEN);
   }
-  else if (displayTaskDataCopy.power.batteryPercent >= 20.0 && displayTaskDataCopy.power.batteryPercent < 50.0)
+  else if (sd.power.batteryPercent >= 20.0 && sd.power.batteryPercent < 50.0)
   {
     displayModule.drawRoundRect(220, 10, 25, 10, 2, ST77XX_ORANGE);
   }
-  else if (displayTaskDataCopy.power.batteryPercent < 20.0)
+  else if (sd.power.batteryPercent < 20.0)
   {
     displayModule.drawRoundRect(220, 10, 25, 10, 2, ST77XX_RED);
   }
@@ -1296,14 +1305,14 @@ void DisplayStatusBar()
   // write battery percentage
   displayModule.setTextSize(1);
   displayModule.setCursor(220, 10);
-  displayModule.printf("%f.0%", displayTaskDataCopy.power.batteryPercent);
+  displayModule.printf("%f.0%", sd.power.batteryPercent);
   // --- battery --- //
 }
 
 /**
  * @brief display screen that indicates a failure in display modes
  */
-void DisplayError()
+void DisplayError(SystemDataType sd)
 {
   // init screen
   displayModule.fillScreen(ST77XX_BLACK);
@@ -1317,19 +1326,19 @@ void DisplayError()
 /**
  * @brief idk now im just flexing hardware verticalization
  */
-void DisplayFlashlight()
+void DisplayFlashlight(SystemDataType sd)
 {
-  if (displayTaskDataCopy.inputFlags.selectShortPress)
+  if (sd.inputFlags.selectShortPress)
   {
     // reset flag
-    displayTaskDataCopy.inputFlags.selectShortPress = false;
+    sd.inputFlags.selectShortPress = false;
     selectButtonToggle = !selectButtonToggle;
   }
 
-  if (displayTaskDataCopy.inputFlags.optionShortPress)
+  if (sd.inputFlags.optionShortPress)
   {
     // reset flag
-    displayTaskDataCopy.inputFlags.optionShortPress = false;
+    sd.inputFlags.optionShortPress = false;
     optionButtonToggle = !optionButtonToggle;
   }
 
@@ -1341,15 +1350,15 @@ void DisplayFlashlight()
     }
     else
     {
-      if (displayTaskDataCopy.display.displayRefreshCounter == 0)
+      if (sd.display.displayRefreshCounter == 0)
       {
         displayModule.fillScreen(ST77XX_RED);
-        displayTaskDataCopy.display.displayRefreshCounter++;
+        sd.display.displayRefreshCounter++;
       }
       else
       {
         displayModule.fillScreen(ST77XX_BLACK);
-        displayTaskDataCopy.display.displayRefreshCounter = 0;
+        sd.display.displayRefreshCounter = 0;
       }
 
       displayModule.setTextSize(2);
@@ -1367,7 +1376,7 @@ void DisplayFlashlight()
 /**
  * @brief gui for inputting a new waypoint
  */
-void DisplayWaypointInputTool()
+void DisplayWaypointInputTool(SystemDataType sd)
 {
   displayModule.setTextSize(1);
   displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
@@ -1378,7 +1387,7 @@ void DisplayWaypointInputTool()
 /**
  * @brief while device is entering sleep mode popup
  */
-void DisplaySleepModeAlert()
+void DisplaySleepModeAlert(SystemDataType sd)
 {
   displayModule.setTextSize(1);
   displayModule.setCursor(30, 100);

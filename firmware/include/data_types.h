@@ -71,8 +71,6 @@ typedef struct
     float batteryPercent;
     float batteryVoltage;
     float batteryChargeRate;
-
-    uint8_t chipId;
     uint8_t alertStatus;
 } PowerDataType;
 

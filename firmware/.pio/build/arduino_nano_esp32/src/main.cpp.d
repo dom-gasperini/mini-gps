@@ -179,12 +179,12 @@
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32/spiram.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
- C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32s3/rtc.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
  C:/Users/domin/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
+ C:/Users/domin/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32s3/rtc.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/Adafruit_GPS.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/Adafruit_PMTK.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/NMEA_data.h \
