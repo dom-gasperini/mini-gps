@@ -79,6 +79,7 @@ typedef struct
     DisplayModeType displayMode;
     DisplayModeType previousDisplayMode;
     int displayRefreshCounter;
+    bool refreshFlag;
 } DisplayDataType;
 
 /**
@@ -131,7 +132,6 @@ typedef struct
     InputFlagsType inputFlags;
     PowerDataType power;
     DisplayDataType display;
-    GpsDataType gps;
 } SystemDataType;
 
 /**
