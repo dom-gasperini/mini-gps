@@ -2,8 +2,8 @@
  * @file pin_config.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 5.0
- * @date 2025-08-18
+ * @version 5.1
+ * @date 2025-09-26
  */
 
 /*
@@ -23,7 +23,7 @@
 esp_pm_config_esp32s3_t power_configuration{
     .max_freq_mhz = 240,
     .min_freq_mhz = 240,
-    .light_sleep_enable = false,
+    .light_sleep_enable = true,
 };
 
 /*

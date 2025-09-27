@@ -43,8 +43,9 @@ typedef enum
 {
     GPS_MODE = 0,
     WAYPOINT_MODE,
-    BATTERY_MODE,
+    SYSTEM_MODE,
     ERROR_MODE, // error mode is a mode cycle select bookend, add new cycle modes before here
+    SLEEP_PROMPT_MODE,
     FLASHLIGHT_MODE,
 } DisplayModeType;
 
@@ -79,7 +80,6 @@ typedef struct
     DisplayModeType displayMode;
     DisplayModeType previousDisplayMode;
     int displayRefreshCounter;
-    bool refreshFlag;
 } DisplayDataType;
 
 /**
