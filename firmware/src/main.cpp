@@ -200,7 +200,7 @@ bool optionButtonToggle = false;
 bool returnButtonPreviousState = LOW;
 unsigned long returnButtonCounter = 0;
 
-bool confirmSleepMode = false;
+bool g_drewMoonIcon = false;
 
 unsigned long specialComboCounter = 0;
 
@@ -248,6 +248,7 @@ void DisplayError(SystemDataType sd);
 void DisplayFlashlight(SystemDataType sd);
 void DisplayWaypointInputTool(SystemDataType sd);
 void DisplaySleepPrompt(SystemDataType sd);
+void DrawCloud(int x, int y, int size, int color);
 
 /*
 ===============================================================================================
@@ -507,6 +508,7 @@ void IoTask(void *pvParameters)
       if (g_systemData.inputFlags.selectShortPress)
       {
         g_systemData.display.displayMode = SLEEP_PROMPT_MODE;
+        g_drewMoonIcon = false;
       }
       break;
 
@@ -1440,15 +1442,44 @@ void DisplaySleepPrompt(SystemDataType sd)
   displayModule.setTextSize(2);
   displayModule.setCursor(25, 30);
   displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-  displayModule.printf("[> hibernate? <]");
+  displayModule.printf("[> hibernate <]");
 
-  displayModule.setCursor(20, 65);
+  displayModule.setCursor(5, 65);
   displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
-  displayModule.printf("<--- confirm");
+  displayModule.printf("<] confirm");
 
-  displayModule.setCursor(20, 120);
+  displayModule.setCursor(5, 120);
   displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
-  displayModule.printf("<--- cancel");
+  displayModule.printf("<] cancel");
+
+  // draw moon
+  if (!g_drewMoonIcon)
+  {
+    // moon
+    displayModule.fillCircle(180, 85, 30, ST77XX_YELLOW);
+    displayModule.fillCircle(170, 75, 30, ST77XX_BLACK);
+    DrawCloud(205, 115, 40, ST77XX_WHITE);
+    g_drewMoonIcon = true;
+  }
+}
+
+/**
+ * @brief draw a cloud!
+ */
+void DrawCloud(int x, int y, int size, int color)
+{
+  // size is the "scale" of the cloud
+  int r = size / 3;
+
+  // main center puff
+  displayModule.fillCircle(x, y, r + 4, color);
+
+  // surrounding puffs
+  displayModule.fillCircle(x - r, y, r, color);
+  displayModule.fillCircle(x + r, y, r, color);
+  displayModule.fillCircle(x - r / 2, y - r, r, color);
+  displayModule.fillCircle(x + r / 2, y - r, r, color);
+  displayModule.fillCircle(x, y + r / 2, r, color);
 }
 
 /*
