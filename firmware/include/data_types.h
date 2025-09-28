@@ -32,9 +32,18 @@ typedef struct
 
 typedef struct
 {
-    float waypointLatitude;
-    float waypointLongitude;
+    float latitude;
+    float longitude;
 } WaypointCoordinatesType;
+
+/**
+ *
+ */
+typedef struct
+{
+    std::vector<WaypointCoordinatesType> waypoints;
+    int selectedWaypoint;
+} WaypointDataType;
 
 /**
  *
@@ -99,10 +108,8 @@ typedef struct
     float longitude;
     float altitude;
 
-    std::vector<WaypointCoordinatesType> waypoints;
-
     float speed;
-    float angle;
+    float heading;
 
     int year;
     int month;
@@ -132,6 +139,8 @@ typedef struct
     InputFlagsType inputFlags;
     PowerDataType power;
     DisplayDataType display;
+    WaypointDataType waypointData;
+    bool enableFlashlight;
 } SystemDataType;
 
 /**
