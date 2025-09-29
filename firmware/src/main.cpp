@@ -41,6 +41,17 @@
 ===============================================================================================
 */
 
+// general
+#define MIN_SATS 3             // min number of sats to have a fix
+#define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
+#define MIN_SPEED 0.25         // minimum number of knots before displaying speed to due resolution limitations
+#define INIT_OPERATING_YEAR 2024
+#define RADIUS_OF_EARTH 3958.756   // in miles
+#define HALF_BATTERY_CAPACITY 50.0 // in %
+#define LOW_BATTERY_CAPACITY 20.0  // in %
+#define HIGH_BATTERY_VOLTAGE 3.9   // in volts
+#define LOW_BATTERY_VOLTAGE 3.4    // in volts
+
 // i2c
 #define I2C_FREQUENCY 115200
 #define I2C_GPS_ADDR 0x10
@@ -48,35 +59,38 @@
 #define LOW_BATTERY_THRESHOLD 10
 #define NUM_DATA_READS 900 // read available data on the i2c bus with this limit
 
-// general
+// system
 #define FIRMWARE_MAJOR 5
 #define FIRMWARE_MINOR 143
 #define FIRMWARE_NAME "stargazer"
-#define REFRESH_WAYPOINT_VECTOR_DELAY 5000 // in milliseconds
-#define MIN_SATS 3                         // min number of sats to have a fix
-#define SHORT_PRESS_DURATION 100           // in milliseconds
-#define LONG_PRESS_DURATION 200            // in milliseconds
-#define SLEEP_ENABLE_DELAY 1000            // in io task cycles
-#define SLEEP_COMBO_TIME 2000              // in milliseconds
-#define WAKE_COMBO_TIME 50                 // in io task cycles
-#define KNOTS_TO_MPH 1.1507795             // mulitplier for converting knots to mph
-#define MIN_SPEED 0.25                     // minimum number of knots before displaying speed to due resolution limitations
-#define INIT_OPERATING_YEAR 2024
-#define SLEEP_BUTTON_COMBO_BITMASK 0x000000003 // hex value representing the pins 0-39 as bits (bits 1 and 2 are selected)
-#define RADIUS_OF_EARTH 3958.756               // in miles
+
+// time keeping
+#define REFRESH_WAYPOINT_VECTOR_DELAY 5000           // in milliseconds
+#define BATTERY_POLL_INTERVAL 1000                   // in milliseconds
+#define DISPLAY_REFRESH_RATE_CALCULATE_INTERVAL 1000 // in milliseconds
+#define SHORT_PRESS_DURATION 100                     // in milliseconds
+#define LONG_PRESS_DURATION 200                      // in milliseconds
+
+// nvs
+#define FLASH_NVS_WITH_DEFAULT false // write the default values to the nvs
 #define WP_1_LAT_NVS_KEY "wp1-lat"
 #define WP_1_LONG_NVS_KEY "wp1-long"
+#define WP_1_NAME_NVS_KEY "wp1-name"
 #define WP_2_LAT_NVS_KEY "wp2-lat"
 #define WP_2_LONG_NVS_KEY "wp2-long"
+#define WP_2_NAME_NVS_KEY "wp2-name"
 #define WP_3_LAT_NVS_KEY "wp3-lat"
 #define WP_3_LONG_NVS_KEY "wp3-long"
+#define WP_3_NAME_NVS_KEY "wp3-name"
 #define WP_4_LAT_NVS_KEY "wp4-lat"
 #define WP_4_LONG_NVS_KEY "wp4-long"
+#define WP_4_NAME_NVS_KEY "wp4-name"
 #define WP_5_LAT_NVS_KEY "wp5-lat"
 #define WP_5_LONG_NVS_KEY "wp5-long"
-#define DEBOUNCE_DURATION 50
+#define WP_5_NAME_NVS_KEY "wp5-name"
 
 // tasks
+#define TASK_STACK_SIZE 4096 // in bytes
 #define EXECUTIVE_CORE 0
 #define DISPLAY_CORE 1
 #define IO_REFRESH_RATE 20      // measured in ticks (RTOS ticks interrupt at 1 kHz)
@@ -84,11 +98,9 @@
 #define DISPLAY_REFRESH_RATE 50 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 #define DEBUG_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
-#define TASK_STACK_SIZE 4096 // in bytes
-
 // debugging
-#define ENABLE_DEBUGGING false
-#define DEBUG_BOOT_DELAY 1500 // in milliseconds
+#define DEBUG_BOOT_DELAY 1000  // in milliseconds
+#define ENABLE_DEBUGGING false // master debug toggle (does not disable boot logging)
 
 /*
 ===============================================================================================
@@ -131,8 +143,6 @@ SystemDataType g_systemData = {
 };
 
 GpsDataType g_gpsData = {
-    .connected = false,
-    .wasConnected = false,
     .validDate = false,
     .fixQuality = 0,
     .dtLastFix = 0.0f,
@@ -197,6 +207,7 @@ unsigned long refreshRateCounter = 0;
 unsigned long refreshRateLastTime = 0;
 unsigned long waypointLastComputeTime = 0;
 unsigned long colorToggleLastTime = 0;
+unsigned long lastBatteryCheckTime = 0;
 
 // io
 bool selectButtonPreviousState = LOW;
@@ -246,6 +257,7 @@ float RadiansToDegrees(float radians);
 String TaskStateToString(eTaskState state);
 bool IsEqual(InputFlagsType x1, InputFlagsType x2);
 std::pair<uint16_t, uint16_t> FixStatusColorManager(int fixQuality, bool validDate);
+void FlashNVS();
 
 // task abstractions
 InputFlagsType ButtonInputHandler();
@@ -273,11 +285,7 @@ void setup()
   // set power configuration
   esp_pm_configure(&power_configuration);
 
-  if (debugger.debugEnabled)
-  {
-    delay(DEBUG_BOOT_DELAY);
-  }
-
+  // init setup manager
   InitDeviceType setup = {
       .ioActive = false,
       .displayActive = false,
@@ -286,22 +294,22 @@ void setup()
 
   // --------------------------- initialize serial  -------------------------- //
   Serial.begin(9600);
+
+  if (debugger.debugEnabled)
+  {
+    delay(DEBUG_BOOT_DELAY);
+  }
+
   Serial.printf("\n\n|--- starting setup ---|\n\n");
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPIO ------------------------------ //
   // // sleep
-  // gpio_deep_sleep_hold_en();
-  // gpio_hold_en((gpio_num_t)GPS_ENABLE_PIN);
-
-  // gpio_wakeup_enable((gpio_num_t)RETURN_BUTTON, GPIO_INTR_HIGH_LEVEL); // light sleep single button wake up
-  // esp_sleep_enable_ext1_wakeup(SLEEP_BUTTON_COMBO_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH); // deep sleep muli button wakeup
-  // esp_sleep_enable_ext0_wakeup((gpio_num_t)RETURN_BUTTON, ESP_EXT1_WAKEUP_ANY_HIGH); // deep sleep single button wake up
-  // esp_sleep_enable_gpio_wakeup();
+  gpio_deep_sleep_hold_en();
+  gpio_hold_en((gpio_num_t)GPS_ENABLE_PIN);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)RETURN_BUTTON, HIGH);
 
   // io
-  // pinMode(SELECT_BUTTON, INPUT);
   pinMode(OPTION_BUTTON, INPUT);
   pinMode(RETURN_BUTTON, INPUT);
 
@@ -311,80 +319,81 @@ void setup()
 
   // tft
   pinMode(TFT_BACKLITE, OUTPUT);
-  digitalWrite(TFT_BACKLITE, LOW); // set backlight off in case of auto pullhigh in hal | TODO: test & remove as needed
 
   // tft and i2c power toggle
-  pinMode(TFT_I2C_POWER, OUTPUT);    // if there are issues with power, try pulling this pin high manually
-  digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display and I2C(?)
-  delay(10);
+  pinMode(TFT_I2C_POWER, OUTPUT);
+  digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display
 
   Serial.printf("gpio init [ success ]\n");
   setup.ioActive = true;
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize EEPROM ----------------------------- //
-  // if (wpStorage.begin("wp-storage", false)) // init read/write nvs depot
-  // {
-  //   Serial.printf("nvs init: [ success ]\n");
+  if (wpStorage.begin("wp-storage", false)) // init read/write nvs depot
+  {
+    Serial.printf("nvs init: [ success ]\n");
 
-  //   float tmpLat, tmpLong;
-  //   tmpLat = wpStorage.getFloat(WP_1_LAT_NVS_KEY, -99);
-  //   tmpLong = wpStorage.getFloat(WP_1_LONG_NVS_KEY, -99);
-  //   WaypointCoordinatesType wp1 = {tmpLat, tmpLong};
+    // flash nvs
+    if (FLASH_NVS_WITH_DEFAULT)
+    {
+      FlashNVS();
+      Serial.printf("\tnvs flashed with default data!\n");
+    }
 
-  //   wpStorage.getFloat(WP_2_LAT_NVS_KEY, -99);
-  //   wpStorage.getFloat(WP_2_LONG_NVS_KEY, -99);
-  //   WaypointCoordinatesType wp2 = {tmpLat, tmpLong};
+    // read nvs
+    float tmpLat, tmpLong;
+    String tmpName;
+    tmpLat = wpStorage.getFloat(WP_1_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_1_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_1_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp1 = {tmpLat, tmpLong, tmpName};
 
-  //   wpStorage.getFloat(WP_3_LAT_NVS_KEY, -99);
-  //   wpStorage.getFloat(WP_3_LONG_NVS_KEY, -99);
-  //   WaypointCoordinatesType wp3 = {tmpLat, tmpLong};
+    tmpLat = wpStorage.getFloat(WP_2_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_2_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_2_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp2 = {tmpLat, tmpLong, tmpName};
 
-  //   wpStorage.getFloat(WP_4_LAT_NVS_KEY, -99);
-  //   wpStorage.getFloat(WP_4_LONG_NVS_KEY, -99);
-  //   WaypointCoordinatesType wp4 = {tmpLat, tmpLong};
+    tmpLat = wpStorage.getFloat(WP_3_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_3_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_3_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp3 = {tmpLat, tmpLong, tmpName};
 
-  //   wpStorage.getFloat(WP_5_LAT_NVS_KEY, -99);
-  //   wpStorage.getFloat(WP_5_LONG_NVS_KEY, -99);
-  //   WaypointCoordinatesType wp5 = {tmpLat, tmpLong};
+    tmpLat = wpStorage.getFloat(WP_4_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_4_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_4_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp4 = {tmpLat, tmpLong, tmpName};
 
-  //   // save to dynamic memory
-  //   systemManager.gps.waypoints.pushback(wp1);
-  //   systemManager.gps.waypoints.pushback(wp2);
-  //   systemManager.gps.waypoints.pushback(wp3);
-  //   systemManager.gps.waypoints.pushback(wp4);
-  //   systemManager.gps.waypoints.pushback(wp5);
-  // }
-  // else
-  // {
-  //   Serial.printf("nvs init: [ failed ]\n");
-  // }
+    tmpLat = wpStorage.getFloat(WP_5_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_5_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_5_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp5 = {tmpLat, tmpLong, tmpName};
 
-  WaypointCoordinatesType home =
-      {
-          .latitude = 44.47883,
-          .longitude = -73.20587,
-      };
+    wpStorage.end();
 
-  WaypointCoordinatesType home1 =
-      {
-          .latitude = 40.362407,
-          .longitude = -74.04034,
-      };
-  g_systemData.waypointData.waypoints.push_back(home);
-  g_systemData.waypointData.waypoints.push_back(home1);
+    // save to dynamic memory
+    g_systemData.waypointData.waypoints.push_back(wp1);
+    g_systemData.waypointData.waypoints.push_back(wp2);
+    g_systemData.waypointData.waypoints.push_back(wp3);
+    g_systemData.waypointData.waypoints.push_back(wp4);
+    g_systemData.waypointData.waypoints.push_back(wp5);
+  }
+  else
+  {
+    Serial.printf("nvs init: [ failed ]\n");
+  }
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize battery --------------------------- //
   if (batteryModule.begin())
   {
     Serial.printf("battery init [ success ]\n");
-    // batteryModule.quickStart();
     batteryModule.enableSleep(true);
 
-    Serial.printf("\tbattery id: 0x%x\n", batteryModule.getChipID());
-    Serial.printf("\tbattery voltage: %.1fv\n", batteryModule.cellVoltage());
-    Serial.printf("\tbattery percentage: %.1f%\n", batteryModule.cellPercent());
+    // collect information
+    uint8_t chipId = batteryModule.getChipID();
+    g_systemData.power.batteryPercent = batteryModule.cellPercent();
+    g_systemData.power.batteryVoltage = batteryModule.cellVoltage();
+    Serial.printf("\tbattery id: 0x%x\n", chipId);
   }
   else
   {
@@ -396,8 +405,8 @@ void setup()
   // -------------------------- initialize display --------------------------- //
   displayModule.init(135, 240); // ST7789 (240x135)
   displayModule.setRotation(3);
-  displayModule.fillScreen(ST77XX_BLACK); // default boot screen fill is white
-  digitalWrite(TFT_BACKLITE, HIGH);       // turn on display backlight
+  displayModule.fillScreen(ST77XX_BLACK);
+  digitalWrite(TFT_BACKLITE, HIGH); // turn on display backlight
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
@@ -430,16 +439,10 @@ void setup()
   }
   // -------------------------------------------------------------------------- //
 
-  // ----------------------- scheduler & task status -------------------------- //
-  // init queue
+  // -------------------------- queues & scheduler ---------------------------- //
+  // init queues
   xIoQueue = xQueueCreate(1, sizeof(SystemDataType));
   xGpsQueue = xQueueCreate(1, sizeof(GpsDataType));
-
-  // task setup status
-  Serial.printf("\ntask setup status:\n");
-  Serial.printf("i/o task setup: %s\n", setup.ioActive ? "complete" : "failed");
-  Serial.printf("gps task setup: %s\n", setup.gpsActive ? "complete" : "failed");
-  Serial.printf("display task setup %s\n", setup.displayActive ? "complete" : "failed");
 
   // start tasks
   if (xIoQueue != NULL && xGpsQueue != NULL)
@@ -492,7 +495,14 @@ void IoTask(void *pvParameters)
 
     // collect system information
     g_systemData.inputFlags = ButtonInputHandler();
-    g_systemData.power = BatteryManager();
+
+    // do time keeping
+    unsigned long now = millis();
+    if (now - lastBatteryCheckTime >= BATTERY_POLL_INTERVAL)
+    {
+      g_systemData.power = BatteryManager();
+      lastBatteryCheckTime = now;
+    }
 
     // display event handler
     switch (g_systemData.display.displayMode)
@@ -635,9 +645,6 @@ void GpsTask(void *pvParameters)
         gpsModule.parse(gpsModule.lastNMEA()); // this sets the newNMEAreceived() flag to false
 
         // connection
-        g_gpsData.connected = gpsModule.fix;
-        g_gpsData.fixQuality = gpsModule.fixquality;
-
         g_gpsData.numSats = gpsModule.satellites;
         g_gpsData.dtLastFix = gpsModule.secondsSinceFix();
         g_gpsData.dtSinceTime = gpsModule.secondsSinceTime();
@@ -818,6 +825,7 @@ void loop()
 
 /**
  * @brief converts a value in degrees to radians
+ * @param degrees - the value to be convereted to radians
  */
 float DegreesToRadians(float degrees)
 {
@@ -825,7 +833,8 @@ float DegreesToRadians(float degrees)
 }
 
 /**
- * @brief converts a value in degrees to radians
+ * @brief converts a value in degrees to radian
+ * @param radians - the value to be convereted to degrees
  */
 float RadiansToDegrees(float rad)
 {
@@ -1138,20 +1147,43 @@ void DisplayGpsData(GpsDataType gps)
  */
 void DisplayWaypoint(SystemDataType sd, GpsDataType gps)
 {
-  // waypoint selector
-  displayModule.setTextSize(1);
-  displayModule.setCursor(0, 20);
-  displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
-  displayModule.printf("waypoint: %d", sd.waypointData.selectedWaypoint);
+  gps.validDate = false;
+  gps.fixQuality = 1,
+  gps.dtLastFix = 0.0f,
+  gps.dtSinceDate = 0.0f;
+  gps.dtSinceTime = 0.0f;
+  gps.latitude = 44.4788300;
+  gps.longitude = -73.205870;
+  gps.altitude = 0.0f;
+  gps.speed = 3.1;
+  gps.heading = 271;
+  gps.year = 2025;
+  gps.month = 11;
+  gps.day = 31;
+  gps.hour = 12;
+  gps.minute = 34;
+  gps.second = 53;
+  gps.timeout = 0;
+  gps.numSats = 4;
 
+  // ensure there is valid waypoint data
   if (!sd.waypointData.waypoints.empty())
   {
+    // waypoint selector
+    displayModule.setTextSize(1);
+    displayModule.setCursor(0, 20);
+    displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
+    displayModule.printf("waypoint: %d", sd.waypointData.selectedWaypoint);
+
     // display waypoint coordinates
     displayModule.setCursor(0, 30);
     displayModule.printf("lat: %.5f", sd.waypointData.waypoints.at(sd.waypointData.selectedWaypoint).latitude);
 
     displayModule.setCursor(0, 40);
     displayModule.printf("long: %.5f", sd.waypointData.waypoints.at(sd.waypointData.selectedWaypoint).longitude);
+
+    displayModule.setCursor(0, 50);
+    displayModule.printf("name: %s                 ", sd.waypointData.waypoints.at(sd.waypointData.selectedWaypoint).name.c_str());
 
     // display current coordinates
     displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
@@ -1209,11 +1241,11 @@ void DisplaySystem(SystemDataType sd)
   displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
   // display battery percent charge
-  if (sd.power.batteryPercent >= 50)
+  if (sd.power.batteryPercent >= HALF_BATTERY_CAPACITY)
   {
     displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
   }
-  else if (sd.power.batteryPercent > 20)
+  else if (sd.power.batteryPercent > LOW_BATTERY_CAPACITY)
   {
     displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
   }
@@ -1222,14 +1254,14 @@ void DisplaySystem(SystemDataType sd)
     displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
   }
   displayModule.setCursor(0, 30);
-  displayModule.printf("battery: %.1f%%", sd.power.batteryPercent);
+  displayModule.printf("battery: %.1f%% ", sd.power.batteryPercent);
 
   // display battery voltage
-  if (sd.power.batteryVoltage >= 3.9)
+  if (sd.power.batteryVoltage >= HIGH_BATTERY_VOLTAGE)
   {
     displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
   }
-  else if (sd.power.batteryVoltage > 3.4)
+  else if (sd.power.batteryVoltage > LOW_BATTERY_VOLTAGE)
   {
     displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
   }
@@ -1274,12 +1306,11 @@ void DisplaySystem(SystemDataType sd)
   displayModule.printf("firmware: %d.%d \"%s\"", FIRMWARE_MAJOR, FIRMWARE_MINOR, FIRMWARE_NAME);
 
   // display refresh rate
-  float refreshRate = 0;
   refreshRateCounter++;
   unsigned long now = millis();
-  if (now - refreshRateLastTime >= 1000)
-  {                                                                          // 1 second passed
-    refreshRate = refreshRateCounter * 1000.0 / (now - refreshRateLastTime); // Hz
+  if (now - refreshRateLastTime >= DISPLAY_REFRESH_RATE_CALCULATE_INTERVAL)
+  {                                                                                // 1 second passed
+    float refreshRate = refreshRateCounter * 1000.0 / (now - refreshRateLastTime); // Hz
     refreshRateCounter = 0;
     refreshRateLastTime = now;
 
@@ -1585,6 +1616,29 @@ std::pair<uint16_t, uint16_t> FixStatusColorManager(int fixQuality, bool validDa
   colors.first = textColor;
   colors.second = backgroundColor;
   return colors;
+}
+
+void FlashNVS()
+{
+  wpStorage.putFloat(WP_1_LAT_NVS_KEY, 44.47883);
+  wpStorage.putFloat(WP_1_LONG_NVS_KEY, -73.20587);
+  wpStorage.putString(WP_1_NAME_NVS_KEY, String("btv"));
+
+  wpStorage.putFloat(WP_2_LAT_NVS_KEY, 43.03033);
+  wpStorage.putFloat(WP_2_LONG_NVS_KEY, -72.87210);
+  wpStorage.putString(WP_2_NAME_NVS_KEY, String("cabin"));
+
+  wpStorage.putFloat(WP_3_LAT_NVS_KEY, 40.36240);
+  wpStorage.putFloat(WP_3_LONG_NVS_KEY, -74.04034);
+  wpStorage.putString(WP_3_NAME_NVS_KEY, String("fair haven"));
+
+  wpStorage.putFloat(WP_4_LAT_NVS_KEY, -100);
+  wpStorage.putFloat(WP_4_LONG_NVS_KEY, -100);
+  wpStorage.putString(WP_4_NAME_NVS_KEY, String(" "));
+
+  wpStorage.putFloat(WP_5_LAT_NVS_KEY, -100);
+  wpStorage.putFloat(WP_5_LONG_NVS_KEY, -100);
+  wpStorage.putString(WP_5_NAME_NVS_KEY, String(" "));
 }
 
 /*

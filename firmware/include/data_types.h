@@ -34,6 +34,7 @@ typedef struct
 {
     float latitude;
     float longitude;
+    String name;
 } WaypointCoordinatesType;
 
 /**
@@ -96,8 +97,6 @@ typedef struct
  */
 typedef struct
 {
-    bool connected;
-    bool wasConnected;
     bool validDate;
     uint8_t fixQuality;
     float dtLastFix;
