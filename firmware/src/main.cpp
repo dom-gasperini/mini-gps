@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief mini gps
- * @version 5.1
- * @date 2025-09-26
+ * @version 5
+ * @date 2025-09-28
  *
  * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather Docs)
  * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module Docs)
