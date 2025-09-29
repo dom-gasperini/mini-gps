@@ -44,7 +44,7 @@
 // general
 #define MIN_SATS 3             // min number of sats to have a fix
 #define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
-#define MIN_SPEED 0.25         // minimum number of knots before displaying speed to due resolution limitations
+#define MIN_SPEED 2.00         // minimum number of knots before displaying speed to due resolution limitations
 #define INIT_OPERATING_YEAR 2024
 #define RADIUS_OF_EARTH 3958.756   // in miles
 #define HALF_BATTERY_CAPACITY 50.0 // in %
@@ -300,12 +300,12 @@ void setup()
   // --------------------------- initialize serial  -------------------------- //
   Serial.begin(9600); // debug serial
 
-  // if (debugger.debugEnabled)
-  // {
-  //   delay(DEBUG_BOOT_DELAY);
-  // }
+  if (debugger.debugEnabled)
+  {
+    delay(DEBUG_BOOT_DELAY);
+  }
 
-  Serial1.begin(9600, RX, TX); // gps serial
+  Serial1.begin(9600, TX, RX); // gps serial
 
   Serial.printf("\n\n|--- starting setup ---|\n\n");
   // ------------------------------------------------------------------------- //
@@ -320,7 +320,8 @@ void setup()
   pinMode(RETURN_BUTTON, INPUT);
 
   // gps
-  pinMode(GPS_ENABLE_PIN, OUTPUT);    // the enable pin specific to the gps module hardware
+  pinMode(GPS_ENABLE_PIN, OUTPUT); // the enable pin specific to the gps module hardware
+  gpio_hold_dis((gpio_num_t)GPS_ENABLE_PIN);
   digitalWrite(GPS_ENABLE_PIN, HIGH); // turn on
 
   // tft
@@ -419,30 +420,25 @@ void setup()
   displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
   displayModule.setCursor(55, 60);
   displayModule.printf("[> booting mini gps <]");
-  delay(1500);
+  delay(1000);
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-
-  if (gpsModule.begin(9600))
+  if (gpsModule.begin(9600)) // default baud rate is 9600
   {
-    // set gps serial baud rate
-    gpsModule.sendCommand(PMTK_SET_BAUD_115200);
+    gpsModule.wakeup();
 
     // filter
-    gpsModule.sendCommand(PMTK_SET_NMEA_OUTPUT_ALLDATA);
+    gpsModule.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
     // set gps to mcu update rate
-    gpsModule.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
+    gpsModule.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
 
     // set gps position fix rate
     gpsModule.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
-
-    // request updates on antenna status (don't need this on)
-    // gps.sendCommand(PGCMD_ANTENNA);
 
     Serial.printf("gps init [ success ]\n");
     setup.gpsActive = true;
@@ -615,6 +611,7 @@ void IoTask(void *pvParameters)
     if (g_systemData.power.sleepModeEnable)
     {
       // turn off display and gps module power
+      gpsModule.standby();
       digitalWrite(GPS_ENABLE_PIN, LOW);
       gpio_hold_en((gpio_num_t)GPS_ENABLE_PIN);
       digitalWrite(TFT_I2C_POWER, LOW);
@@ -636,7 +633,7 @@ void IoTask(void *pvParameters)
 }
 
 /**
- * @brief i2c bus
+ * @brief gps
  * @param pvParameters parameters passed to task
  */
 void GpsTask(void *pvParameters)
@@ -644,7 +641,6 @@ void GpsTask(void *pvParameters)
   // inits
   const TickType_t xFrequency = pdMS_TO_TICKS(GPS_REFRESH_RATE);
   TickType_t taskLastWakeTick = xTaskGetTickCount();
-  uint16_t readCounter = 0;
 
   for (;;)
   {
@@ -661,6 +657,7 @@ void GpsTask(void *pvParameters)
         {
           // connection
           g_gpsData.numSats = gpsModule.satellites;
+          g_gpsData.fixQuality = gpsModule.fixquality;
           if (gpsModule.secondsSinceFix() < DELTA_FIX_HARDSTOP)
           {
             g_gpsData.dtLastFix = gpsModule.secondsSinceFix();
@@ -697,18 +694,14 @@ void GpsTask(void *pvParameters)
           g_gpsData.year = gpsModule.year + 2000;
           g_gpsData.month = gpsModule.month;
           g_gpsData.day = gpsModule.day;
+          g_gpsData.validDate = (g_gpsData.year >= INIT_OPERATING_YEAR && g_gpsData.year < EOL_YEAR) ? true : false; // determine if date time information is valid
 
           // time
           g_gpsData.hour = gpsModule.hour;
           g_gpsData.minute = gpsModule.minute;
           g_gpsData.second = gpsModule.seconds;
-
-          g_gpsData.validDate = (g_gpsData.year >= INIT_OPERATING_YEAR && g_gpsData.year < EOL_YEAR) ? true : false;
         }
       }
-
-      // increment read counter
-      readCounter++;
     }
 
     // sync data
@@ -1056,6 +1049,25 @@ PowerDataType BatteryManager()
  */
 void DisplayGpsData(GpsDataType gps)
 {
+  // gps.validDate = true;
+  // gps.fixQuality = 1,
+  // gps.dtLastFix = 0.0f,
+  // gps.dtSinceDate = 0.0f;
+  // gps.dtSinceTime = 0.0f;
+  // gps.latitude = 44.4788300;
+  // gps.longitude = -73.205870;
+  // gps.altitude = 0.0f;
+  // gps.speed = 3.1;
+  // gps.heading = 271;
+  // gps.year = 2025;
+  // gps.month = 1;
+  // gps.day = 3;
+  // gps.hour = 1;
+  // gps.minute = 4;
+  // gps.second = 3;
+  // gps.timeout = 0;
+  // gps.numSats = 4;
+
   // location
   displayModule.setTextSize(2);
   displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
@@ -1088,7 +1100,7 @@ void DisplayGpsData(GpsDataType gps)
   displayModule.setCursor(5, 90);
   if (gps.numSats > MIN_SATS)
   {
-    displayModule.printf("%.1fmph", gps.speed);
+    displayModule.printf("%.1fmph ", gps.speed);
   }
   else
   {
@@ -1100,7 +1112,7 @@ void DisplayGpsData(GpsDataType gps)
   displayModule.setCursor(190, 90);
   if (gps.speed > MIN_SPEED)
   {
-    displayModule.printf("%d%c", (int)gps.heading, 0xF7);
+    displayModule.printf("%03d%c", (int)gps.heading, 0xF7);
   }
   else
   {
@@ -1117,10 +1129,10 @@ void DisplayGpsData(GpsDataType gps)
   {
     displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
     displayModule.setCursor(180, 115);
-    displayModule.printf("%d/%d/%d ", gps.year, gps.month, gps.day);
+    displayModule.printf("%04d/%02d/%02d", gps.year, gps.month, gps.day);
 
-    displayModule.setCursor(168, 125);
-    displayModule.printf("%d:%d:%d(UTC) ", gps.hour, gps.minute, gps.second);
+    displayModule.setCursor(156, 125);
+    displayModule.printf("%02d:%02d:%02d (UTC)", gps.hour, gps.minute, gps.second);
   }
   else
   {
@@ -1128,8 +1140,8 @@ void DisplayGpsData(GpsDataType gps)
     displayModule.setCursor(180, 115);
     displayModule.printf("----/--/--");
     displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
-    displayModule.setCursor(168, 125);
-    displayModule.printf("--:--:--(UTC)");
+    displayModule.setCursor(156, 125);
+    displayModule.printf("--:--:-- (UTC)");
   }
 
   // sats
@@ -1421,7 +1433,7 @@ void DisplayStatusBar(SystemDataType sd, GpsDataType gps)
   if (gps.validDate)
   {
     displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-    displayModule.printf("%d:%d:%d ", gps.hour, gps.minute, gps.second);
+    displayModule.printf("%02d:%02d:%02d", gps.hour, gps.minute, gps.second);
   }
   else
   {
