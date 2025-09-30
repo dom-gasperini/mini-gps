@@ -2,7 +2,7 @@
  * @file pin_config.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 5.1
+ * @version 5.0
  * @date 2025-09-26
  */
 
@@ -38,6 +38,4 @@ esp_pm_config_esp32s3_t power_configuration{
 #define RETURN_BUTTON 2 // bottom | pulled down
 
 // gps
-#define GPS_ENABLE_PIN A4 // the enable pin specific to the gps module hardware | HIGH = on | LOW = off
-
-// display
+#define GPS_ENABLE_PIN A4 // enable pin specific to the gps module hardware | HIGH = on | LOW = off

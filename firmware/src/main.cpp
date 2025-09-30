@@ -1,12 +1,12 @@
 /**
  * @file main.cpp
- * @author dom gasperini
+ * @author dom
  * @brief mini gps
  * @version 5
- * @date 2025-09-28
+ * @date 2025-09-29
  *
- * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather Docs)
- * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module Docs)
+ * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather docs)
+ * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module docs)
  * @ref https://github.com/adafruit/Adafruit_GPS                              (gps library)
  * @ref https://github.com/adafruit/Adafruit-GFX-Library                      (graphics library)
  */
