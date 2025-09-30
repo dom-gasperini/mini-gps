@@ -42,17 +42,18 @@
 */
 
 // general
-#define MIN_SATS 3             // min number of sats to have a fix
-#define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
-#define MIN_SPEED 2.00         // minimum number of knots before displaying speed to due resolution limitations
-#define INIT_OPERATING_YEAR 2024
+#define MIN_SATS 3                 // min number of sats to have a fix
+#define KNOTS_TO_MPH 1.1507795     // mulitplier for converting knots to mph
+#define METERS_TO_FEET 3.28084     // mulitplier for converting meteres to feet
+#define MIN_SPEED 1.5              // minimum number of knots before displaying speed to due resolution limitations
+#define INIT_OPERATING_YEAR 2025   // first operational year
+#define EOL_YEAR 2079              // end of life operating year
 #define RADIUS_OF_EARTH 3958.756   // in miles
 #define HALF_BATTERY_CAPACITY 50.0 // in %
 #define LOW_BATTERY_CAPACITY 20.0  // in %
 #define HIGH_BATTERY_VOLTAGE 3.9   // in volts
 #define LOW_BATTERY_VOLTAGE 3.4    // in volts
-#define EOL_YEAR 2079
-#define DELTA_FIX_HARDSTOP 100000 // seconds
+#define DELTA_FIX_HARDSTOP 100000  // seconds
 
 // comms
 #define I2C_FREQUENCY 115200
@@ -62,7 +63,7 @@
 
 // system
 #define FIRMWARE_MAJOR 5
-#define FIRMWARE_MINOR 211
+#define FIRMWARE_MINOR 357
 #define FIRMWARE_NAME "stargazer"
 
 // time keeping
@@ -673,7 +674,7 @@ void GpsTask(void *pvParameters)
           //  location
           g_gpsData.latitude = gpsModule.latitudeDegrees;
           g_gpsData.longitude = gpsModule.longitudeDegrees;
-          g_gpsData.altitude = gpsModule.altitude;
+          g_gpsData.altitude = gpsModule.altitude * METERS_TO_FEET;
 
           // vector
           g_gpsData.speed = gpsModule.speed; // speed is given in knots
@@ -1049,6 +1050,7 @@ PowerDataType BatteryManager()
  */
 void DisplayGpsData(GpsDataType gps)
 {
+  // debug
   // gps.validDate = true;
   // gps.fixQuality = 1,
   // gps.dtLastFix = 0.0f,
@@ -1056,7 +1058,7 @@ void DisplayGpsData(GpsDataType gps)
   // gps.dtSinceTime = 0.0f;
   // gps.latitude = 44.4788300;
   // gps.longitude = -73.205870;
-  // gps.altitude = 0.0f;
+  // gps.altitude = 4324.1;
   // gps.speed = 3.1;
   // gps.heading = 271;
   // gps.year = 2025;
@@ -1080,7 +1082,7 @@ void DisplayGpsData(GpsDataType gps)
     displayModule.printf("%.5f", gps.longitude);
 
     displayModule.setCursor(90, 55);
-    displayModule.printf("%.1f m   ", gps.altitude);
+    displayModule.printf("%4.1f ft ", gps.altitude);
   }
   else
   {
@@ -1091,7 +1093,7 @@ void DisplayGpsData(GpsDataType gps)
     displayModule.printf("--.-----");
 
     displayModule.setCursor(70, 55);
-    displayModule.printf("----.- m ");
+    displayModule.printf("----.- ft ");
   }
 
   // speed
@@ -1154,7 +1156,7 @@ void DisplayGpsData(GpsDataType gps)
   {
     displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
   }
-  else if (gps.numSats > 0 && gps.numSats < MIN_SATS)
+  else if (gps.numSats > 0 && gps.numSats <= MIN_SATS)
   {
     displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
   }
