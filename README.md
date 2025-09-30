@@ -4,37 +4,18 @@ a gps location device
 
 ## details
 
-- 3 meters precision
-- 5Hz fix update rate
-- LiIo (8 hours of battery)
+- 1 meters precision
+- 1Hz fix update rate
+- LiPo battery (12 hours screen on, 5 day standby)
+- waypoint system
 
 ## hardware
 
-- esp32 devkit-c
-- Adafruit 2.4" ILI9341 display
+- Adafruit ESP32-S3 Reverse TFT Feather
 - Adafruit GPS Module (MTK33x9 Chipset)
 
 ## software
 
 - FreeRTOS
-- Adafruit GFZ Library
+- Adafruit GFX Library
 - Adafruit GPS Library
-
-## todo:
-
-### hardware
-
-- different display
-
-### gui
-
-- increase display of fix precision
-- add cardinal direction with heading (ex: NW @ 345 deg)
-- consider EST rather than UTC
-
-### firmware
-
-- add last know time of fix to flash memory
-- implement deep sleep / soft power state control
-- battery precentage and estimated power on time remaining
--
