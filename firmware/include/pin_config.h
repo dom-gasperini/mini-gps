@@ -2,8 +2,8 @@
  * @file pin_config.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 2.0
- * @date 2024-06-08
+ * @version 5.0
+ * @date 2025-09-26
  */
 
 /*
@@ -20,10 +20,10 @@
 ===========================================================
 */
 
-esp_pm_config_esp32_t power_configuration{
+esp_pm_config_esp32s3_t power_configuration{
     .max_freq_mhz = 240,
     .min_freq_mhz = 240,
-    .light_sleep_enable = false,
+    .light_sleep_enable = true,
 };
 
 /*
@@ -32,16 +32,10 @@ esp_pm_config_esp32_t power_configuration{
 ===========================================================
 */
 
-// inputs
+// io
+#define SELECT_BUTTON 0 // top | pulled up
+#define OPTION_BUTTON 1 // middle | pulled down
+#define RETURN_BUTTON 2 // bottom | pulled down
 
-// ic2
-#define I2C_SCL_PIN 19
-#define I2C_SDA_PIN 18
-
-// display
-// #define TFT_SCK 27
-// #define TFT_MOSI 32
-// #define TFT_MISO 14
-// #define TFT_CS 33
-// #define TFT_DC 25
-// #define TFT_RESET 26
+// gps
+#define GPS_ENABLE_PIN A4 // enable pin specific to the gps module hardware | HIGH = on | LOW = off

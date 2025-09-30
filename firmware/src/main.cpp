@@ -1,13 +1,14 @@
 /**
  * @file main.cpp
- * @author dom gasperini
- * @brief mini-gps
- * @version 3.0
- * @date 2025-07-03
+ * @author dom
+ * @brief mini gps
+ * @version 5
+ * @date 2025-09-29
  *
- * @ref https://espregpsSerialif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/libraries.html#apis      (api and hal docs)
- * @ref https://docs.espregpsSerialif.com/projects/esp-idf/en/latest/esp32/_images/esp32-devkitC-v4-pinout.png         (pinout & overview)
- * @ref https://github.com/adafruit/Adafruit_GPS                                                                       (gps library)
+ * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather docs)
+ * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module docs)
+ * @ref https://github.com/adafruit/Adafruit_GPS                              (gps library)
+ * @ref https://github.com/adafruit/Adafruit-GFX-Library                      (graphics library)
  */
 
 /*
@@ -18,13 +19,17 @@
 
 // core
 #include <Arduino.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Preferences.h>
+#include <rtc.h>
 #include <vector>
-#include "rtc.h"
 
-// functionality
-#include "Wire.h"
-#include <Adafruit_GPS.h>
-#include <TFT_eSPI.h>
+// hardware specific
+#include <Adafruit_GPS.h>      // gps parsing library
+#include <Adafruit_GFX.h>      // graphics library
+#include <Adafruit_ST7789.h>   // display driver library
+#include <Adafruit_MAX1704X.h> // battery managment chip library
 
 // custom
 #include <data_types.h>
@@ -36,29 +41,69 @@
 ===============================================================================================
 */
 
-// i2c
-#define I2C_FREQUENCY 115200
-#define I2C_GPS_ADDR 0x10
-
 // general
-#define KNOTS_TO_MPH 1.1507795 // mulitplier for converting knots to mph
-#define MIN_SPEED 2.00         // minimum number of knots before displaying speed to due resolution limitations
-#define FINAL_VALID_OPERATING_YEAR 2080
-#define START_VALID_OPERATING_YEAR 2024
+#define MIN_SATS 3                 // min number of sats to have a fix
+#define KNOTS_TO_MPH 1.1507795     // mulitplier for converting knots to mph
+#define METERS_TO_FEET 3.28084     // mulitplier for converting meteres to feet
+#define MIN_SPEED 1.5              // minimum number of knots before displaying speed to due resolution limitations
+#define INIT_OPERATING_YEAR 2025   // first operational year
+#define EOL_YEAR 2079              // end of life operating year
+#define RADIUS_OF_EARTH 3958.756   // in miles
+#define HALF_BATTERY_CAPACITY 50.0 // in %
+#define LOW_BATTERY_CAPACITY 20.0  // in %
+#define HIGH_BATTERY_VOLTAGE 3.9   // in volts
+#define LOW_BATTERY_VOLTAGE 3.4    // in volts
+#define DELTA_FIX_HARDSTOP 100000  // seconds
+
+// comms
+#define I2C_FREQUENCY 115200
+#define BATT_MGMT_ADDR 0x36
+#define LOW_BATTERY_THRESHOLD 10
+#define NUM_DATA_READS 900 // read available data on the serial bus with this limit
+
+// system
+#define FIRMWARE_MAJOR 5
+#define FIRMWARE_MINOR 357
+#define FIRMWARE_NAME "stargazer"
+
+// time keeping
+#define REFRESH_WAYPOINT_VECTOR_DELAY 5000           // in milliseconds
+#define BATTERY_POLL_INTERVAL 2000                   // in milliseconds
+#define BATTERY_CHARGING_INDICATION_DELAY 500        // in milliseconds
+#define DISPLAY_REFRESH_RATE_CALCULATE_INTERVAL 1000 // in milliseconds
+#define SHORT_PRESS_DURATION 100                     // in milliseconds
+#define LONG_PRESS_DURATION 200                      // in milliseconds
+
+// nvs
+#define FLASH_NVS_WITH_DEFAULT false // write the default values to the nvs
+#define WP_1_LAT_NVS_KEY "wp1-lat"
+#define WP_1_LONG_NVS_KEY "wp1-long"
+#define WP_1_NAME_NVS_KEY "wp1-name"
+#define WP_2_LAT_NVS_KEY "wp2-lat"
+#define WP_2_LONG_NVS_KEY "wp2-long"
+#define WP_2_NAME_NVS_KEY "wp2-name"
+#define WP_3_LAT_NVS_KEY "wp3-lat"
+#define WP_3_LONG_NVS_KEY "wp3-long"
+#define WP_3_NAME_NVS_KEY "wp3-name"
+#define WP_4_LAT_NVS_KEY "wp4-lat"
+#define WP_4_LONG_NVS_KEY "wp4-long"
+#define WP_4_NAME_NVS_KEY "wp4-name"
+#define WP_5_LAT_NVS_KEY "wp5-lat"
+#define WP_5_LONG_NVS_KEY "wp5-long"
+#define WP_5_NAME_NVS_KEY "wp5-name"
 
 // tasks
-#define GPS_CORE 0
+#define TASK_STACK_SIZE 4096 // in bytes
+#define EXECUTIVE_CORE 0
 #define DISPLAY_CORE 1
-#define IO_WRITE_REFRESH_RATE 100 // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define IO_READ_REFRESH_RATE 100  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define I2C_REFRESH_RATE 10       // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 100  // measured in ticks (RTOS ticks interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000   // measured in ticks (RTOS ticks interrupt at 1 kHz)
-
-#define TASK_STACK_SIZE 2048 // in bytes
+#define IO_REFRESH_RATE 20      // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define GPS_REFRESH_RATE 20     // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 50 // measured in ticks (RTOS ticks interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE 1000 // measured in ticks (RTOS ticks interrupt at 1 kHz)
 
 // debugging
-#define ENABLE_DEBUGGING true
+#define DEBUG_BOOT_DELAY 1000  // in milliseconds
+#define ENABLE_DEBUGGING false // master debug toggle (does not disable boot logging)
 
 /*
 ===============================================================================================
@@ -66,9 +111,41 @@
 ===============================================================================================
 */
 
-Data data = {
-    .connected = false,
-    .wasConnected = false,
+SystemDataType g_systemData = {
+    .inputFlags = {
+        .selectShortPress = false,
+        .selectLongPress = false,
+        .optionShortPress = false,
+        .optionLongPress = false,
+        .returnShortPress = false,
+        .returnLongPress = false,
+        .specialShortPress = false,
+        .specialLongPress = false,
+    },
+
+    .power = {
+        .lowBatteryModeEnable = false,
+        .sleepModeEnable = false,
+        .batteryPercent = 0.0f,
+        .batteryVoltage = 0.0f,
+        .batteryChargeRate = 0.0f,
+        .alertStatus = false,
+    },
+
+    .display = {
+        .displayMode = GPS_MODE,
+        .previousDisplayMode = ERROR_MODE,
+        .displayRefreshCounter = 0,
+    },
+
+    .waypointData = {
+        .waypoints = {},
+        .selectedWaypoint = 0,
+    },
+    .enableFlashlight = false,
+};
+
+GpsDataType g_gpsData = {
     .validDate = false,
     .fixQuality = 0,
     .dtLastFix = 0.0f,
@@ -80,7 +157,7 @@ Data data = {
     .altitude = 0.0f,
 
     .speed = 0.0f,
-    .angle = 0.0f,
+    .heading = 0.0f,
 
     .year = 0,
     .month = 0,
@@ -94,49 +171,75 @@ Data data = {
     .numSats = 0,
 };
 
-Debugger debugger = {
+/**
+ * @brief debug data
+ */
+DebuggerType debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
-    .IO_debugEnabled = false,
-    .i2c_debugEnabled = false,
+    .gps_debugEnabled = false,
     .display_debugEnabled = false,
     .scheduler_debugEnable = true,
 
     .debugText = "",
 
     // scheduler data
-    .ioWriteTaskCount = 0,
-    .ioReadTaskCount = 0,
-    .i2cTaskCount = 0,
+    .ioTaskCount = 0,
+    .gpsTaskCount = 0,
     .displayTaskCount = 0,
 
     .displayRefreshRate = 0,
 
-    .ioReadTaskPreviousCount = 0,
-    .ioWriteTaskPreviousCount = 0,
-    .i2cTaskPreviousCount = 0,
+    .ioTaskPreviousCount = 0,
+    .gpsTaskPreviousCount = 0,
     .displayTaskPreviousCount = 0,
 };
 
-// i2c
-TwoWire I2CGPS = TwoWire(0);
+// Non-voltile storage
+Preferences wpStorage;
+
+// battery management
+Adafruit_MAX17048 batteryModule;
 
 // gps
-Adafruit_GPS gps(&I2CGPS);
+Adafruit_GPS gpsModule(&Serial1);
 
 // display
-TFT_eSPI tft = TFT_eSPI();
-int displayRefreshCounter = 0;
+Adafruit_ST7789 displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // 240x135
+DisplayModeType previousDisplayMode = ERROR_MODE;
 
-// semaphore
-SemaphoreHandle_t xSemaphore = NULL;
+// io
+bool selectButtonPreviousState = LOW;
+unsigned long selectButtonCounter = 0;
+bool selectButtonToggle = false;
 
-// hardware timer
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+bool optionButtonPreviousState = LOW;
+unsigned long optionButtonCounter = 0;
+bool optionButtonToggle = false;
+
+bool returnButtonPreviousState = LOW;
+unsigned long returnButtonCounter = 0;
+
+bool g_drewMoonIcon = false;
+
+int previousSelectedWaypoint = -1; // init to non-existant index to force first time compute of vector
+bool updatedFlashlight = false;    // a flag that the flashlight has been enabled
+bool colorToggleEnable = false;    // flag for alternating colors
+
+// time keeping
+unsigned long refreshRateCounter = 0;
+unsigned long refreshRateLastTime = 0;
+unsigned long waypointLastComputeTime = 0;
+unsigned long colorToggleLastTime = 0;
+unsigned long lastBatteryCheckTime = 0;
+unsigned long lastBatteryChargeIndicatorTime = 0;
+
+// queues
+QueueHandle_t xIoQueue;
+QueueHandle_t xGpsQueue;
 
 // rtos task handles
-TaskHandle_t xHandleIORead = NULL;
-TaskHandle_t xHandleIOWrite = NULL;
-TaskHandle_t xHandleI2C = NULL;
+TaskHandle_t xHandleIo = NULL;
+TaskHandle_t xHandleGps = NULL;
 TaskHandle_t xHandleDisplay = NULL;
 TaskHandle_t xHandleDebug = NULL;
 
@@ -147,16 +250,35 @@ TaskHandle_t xHandleDebug = NULL;
 */
 
 // tasks
-void IOReadTask(void *pvParameters);
-void IOWriteTask(void *pvParameters);
-void I2CTask(void *pvParameters);
+void IoTask(void *pvParameters);
+void GpsTask(void *pvParameters);
 void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
 // helpers
+float CalculateWaypointDistance(GpsDataType sd, WaypointCoordinatesType wp);
+float CalculateWaypointBearing(GpsDataType gps, WaypointCoordinatesType wp);
+float DegreesToRadians(float degrees);
+float RadiansToDegrees(float radians);
 String TaskStateToString(eTaskState state);
-bool IsValidDate();
-void ActivityAnimation();
+bool IsEqual(InputFlagsType x1, InputFlagsType x2);
+std::pair<uint16_t, uint16_t> FixStatusColorManager(int fixQuality, bool validDate);
+void FlashNVS();
+
+// task abstractions
+InputFlagsType ButtonInputHandler();
+PowerDataType BatteryManager();
+
+// display
+void DisplayGpsData(GpsDataType gps);
+void DisplayWaypoint(SystemDataType sd, GpsDataType gps);
+void DisplaySystem(SystemDataType sd);
+void DisplayStatusBar(SystemDataType sd, GpsDataType gps);
+void DisplayError(SystemDataType sd);
+void DisplayFlashlight(SystemDataType sd);
+void DisplayWaypointInputTool(SystemDataType sd);
+void DisplaySleepPrompt(SystemDataType sd);
+void DrawCloud(int x, int y, int size, int color);
 
 /*
 ===============================================================================================
@@ -169,118 +291,186 @@ void setup()
   // set power configuration
   esp_pm_configure(&power_configuration);
 
+  // init setup manager
+  InitDeviceType setup = {
+      .ioActive = false,
+      .displayActive = false,
+      .gpsActive = false,
+  };
+
+  // --------------------------- initialize serial  -------------------------- //
+  Serial.begin(9600); // debug serial
+
   if (debugger.debugEnabled)
   {
-    // delay startup by 3 seconds
-    vTaskDelay(3000);
+    delay(DEBUG_BOOT_DELAY);
   }
 
-  // setup managment struct
-  struct setup
-  {
-    bool ioActive = false;
-    bool displayActive = false;
-    bool i2cActive = false;
-  };
-  setup setup;
+  Serial1.begin(9600, TX, RX); // gps serial
 
-  // --------------------------- initialize serial  --------------------------- //
-  Serial.begin(9600);
   Serial.printf("\n\n|--- starting setup ---|\n\n");
-  // -------------------------------------------------------------------------- //
+  // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize GPIO ------------------------------ //
+  // sleep
+  gpio_deep_sleep_hold_en();
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)RETURN_BUTTON, HIGH);
 
-  // inputs
+  // io
+  pinMode(OPTION_BUTTON, INPUT);
+  pinMode(RETURN_BUTTON, INPUT);
 
-  // outputs
+  // gps
+  pinMode(GPS_ENABLE_PIN, OUTPUT); // the enable pin specific to the gps module hardware
+  gpio_hold_dis((gpio_num_t)GPS_ENABLE_PIN);
+  digitalWrite(GPS_ENABLE_PIN, HIGH); // turn on
 
-  Serial.printf("GPIO INIT [ SUCCESS ]\n");
+  // tft
+  pinMode(TFT_BACKLITE, OUTPUT);
+
+  // tft and i2c power toggle
+  pinMode(TFT_I2C_POWER, OUTPUT);
+  digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display
+
+  Serial.printf("gpio init [ success ]\n");
   setup.ioActive = true;
-  // -------------------------------------------------------------------------- //
+  // ------------------------------------------------------------------------- //
 
-  // ----------------------- initialize I2C connection --------------------- //
-  if (I2CGPS.begin(I2C_SCL_PIN, I2C_SDA_PIN, I2C_FREQUENCY) == true)
+  // -------------------- initialize non-volitile storage -------------------- //
+  if (wpStorage.begin("wp-storage", false)) // true = read only | false = read/write
   {
-    Serial.printf("i2c bus init [ success ]\n");
-    setup.i2cActive = true;
+    Serial.printf("nvs init: [ success ]\n");
+
+    // flash nvs
+    if (FLASH_NVS_WITH_DEFAULT)
+    {
+      FlashNVS();
+      Serial.printf("\tnvs flashed with default data!\n");
+    }
+
+    // read nvs
+    float tmpLat, tmpLong;
+    String tmpName;
+    tmpLat = wpStorage.getFloat(WP_1_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_1_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_1_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp1 = {tmpLat, tmpLong, tmpName};
+
+    tmpLat = wpStorage.getFloat(WP_2_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_2_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_2_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp2 = {tmpLat, tmpLong, tmpName};
+
+    tmpLat = wpStorage.getFloat(WP_3_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_3_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_3_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp3 = {tmpLat, tmpLong, tmpName};
+
+    tmpLat = wpStorage.getFloat(WP_4_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_4_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_4_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp4 = {tmpLat, tmpLong, tmpName};
+
+    tmpLat = wpStorage.getFloat(WP_5_LAT_NVS_KEY, -99);
+    tmpLong = wpStorage.getFloat(WP_5_LONG_NVS_KEY, -99);
+    tmpName = wpStorage.getString(WP_5_NAME_NVS_KEY, " ");
+    WaypointCoordinatesType wp5 = {tmpLat, tmpLong, tmpName};
+
+    wpStorage.end();
+
+    // save to dynamic memory
+    g_systemData.waypointData.waypoints.push_back(wp1);
+    g_systemData.waypointData.waypoints.push_back(wp2);
+    g_systemData.waypointData.waypoints.push_back(wp3);
+    g_systemData.waypointData.waypoints.push_back(wp4);
+    g_systemData.waypointData.waypoints.push_back(wp5);
   }
   else
   {
-    Serial.printf("i2c bus init [ failed ]\n");
+    Serial.printf("nvs init: [ failed ]\n");
   }
-  // -------------------------------------------------------------------------- //
+  // ------------------------------------------------------------------------- //
+
+  // -------------------------- initialize battery --------------------------- //
+  if (batteryModule.begin())
+  {
+    Serial.printf("battery init [ success ]\n");
+    batteryModule.enableSleep(true);
+
+    // collect information
+    uint8_t chipId = batteryModule.getChipID();
+    g_systemData.power.batteryPercent = batteryModule.cellPercent();
+    g_systemData.power.batteryVoltage = batteryModule.cellVoltage();
+    Serial.printf("\tchip id: 0x%x\n", chipId);
+  }
+  else
+  {
+    Serial.printf("battery init [ failed ]\n");
+  }
+
+  // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize display --------------------------- //
-  tft.init();
-  tft.setRotation(3);
-  tft.fillScreen(TFT_BLACK);
+  displayModule.init(135, 240);
+  displayModule.setRotation(3);
+  displayModule.fillScreen(ST77XX_BLACK);
+  digitalWrite(TFT_BACKLITE, HIGH); // turn on display backlight
 
-  // display gps information
-  tft.setTextSize(3);
-  tft.setTextColor(TFT_RED);
-  tft.setCursor(0, 0);
-  tft.printf("mini-gps:");
-
-  // outline boxes
-  tft.drawRect(0, 25, 320, 155, TFT_DARKCYAN);
-  tft.drawRect(0, 185, 320, 55, TFT_MAGENTA);
+  // boot screen
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  displayModule.setCursor(55, 60);
+  displayModule.printf("[> booting mini gps <]");
+  delay(1000);
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  gps.begin(I2C_GPS_ADDR);
+  if (gpsModule.begin(9600)) // default baud rate is 9600
+  {
+    gpsModule.wakeup();
 
-  // set gps i2c baud rate
-  gps.sendCommand(PMTK_SET_BAUD_115200);
+    // filter
+    gpsModule.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
-  // uncomment this line to turn on RMC (recommended minimum) and GGA (fix data) including altitude
-  gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+    // set gps to mcu update rate
+    gpsModule.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
 
-  // set gps to mcu update rate
-  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+    // set gps position fix rate
+    gpsModule.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
 
-  // set gps position fix rate
-  gps.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
-
-  // request updates on antenna status (don't need this on)
-  // gps.sendCommand(PGCMD_ANTENNA);
-
-  Serial.printf("gps init [ success ]\n");
+    Serial.printf("gps init [ success ]\n");
+    setup.gpsActive = true;
+  }
+  else
+  {
+    Serial.printf("gps init [ failed ]\n");
+  }
   // -------------------------------------------------------------------------- //
 
-  Serial.printf("\n\n|--- end setup ---|\n\n");
-  // --------------------------------------------------------------------------- //
-
-  // ------------------------------- scheduler & task status --------------------------------- //
-  // init mutex
-  xSemaphore = xSemaphoreCreateCounting(10, 0);
-
-  // task setup status
-  Serial.printf("\ntask setup status:\n");
-  Serial.printf("i/o task setup: %s\n", setup.ioActive ? "complete" : "failed");
-  Serial.printf("i2c task setup: %s\n", setup.i2cActive ? "complete" : "failed");
-  Serial.printf("display task setup %s\n", setup.displayActive ? "complete" : "failed");
+  // -------------------------- queues & scheduler ---------------------------- //
+  // init queues
+  xIoQueue = xQueueCreate(1, sizeof(SystemDataType));
+  xGpsQueue = xQueueCreate(1, sizeof(GpsDataType));
 
   // start tasks
-  if (xSemaphore != NULL)
+  if (xIoQueue != NULL && xGpsQueue != NULL)
   {
     if (setup.ioActive)
     {
-      // xTaskCreate(IOWriteTask, "write-io", TASK_STACK_SIZE, NULL, 1, &xHandleIOWrite);
-      // xTaskCreate(IOReadTask, "read-io", TASK_STACK_SIZE, NULL, 1, &xHandleIORead);
+      xTaskCreatePinnedToCore(IoTask, "io", TASK_STACK_SIZE, NULL, 1, &xHandleIo, EXECUTIVE_CORE);
     }
 
-    if (setup.i2cActive)
+    if (setup.gpsActive)
     {
-      xTaskCreatePinnedToCore(I2CTask, "i2c", TASK_STACK_SIZE, NULL, 1, &xHandleI2C, GPS_CORE);
+      xTaskCreatePinnedToCore(GpsTask, "gps", TASK_STACK_SIZE, NULL, 1, &xHandleGps, EXECUTIVE_CORE);
     }
 
     if (setup.displayActive)
     {
-      xTaskCreatePinnedToCore(DisplayTask, "display-update", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay, DISPLAY_CORE);
+      xTaskCreatePinnedToCore(DisplayTask, "display", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay, DISPLAY_CORE);
     }
 
     if (debugger.debugEnabled == true)
@@ -288,60 +478,9 @@ void setup()
       xTaskCreate(DebugTask, "debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
     }
   }
-  else
-  {
-    Serial.printf("failed to init mutex!\nhalting operations!!!");
-    while (1)
-    {
-    };
-  }
 
-  // task status
-  Serial.printf("\ntask status:\n");
-  if (xHandleIORead != NULL)
-    Serial.printf("i/o read task status: %s\n", TaskStateToString(eTaskGetState(xHandleIORead)));
-  else
-    Serial.printf("i/o read task status: disabled!\n");
-
-  if (xHandleIOWrite != NULL)
-    Serial.printf("i/o write task status: %s\n", TaskStateToString(eTaskGetState(xHandleIOWrite)));
-  else
-    Serial.printf("i/o write task status: disabled!\n");
-
-  if (xHandleI2C != NULL)
-    Serial.printf("i2c task status: %s\n", TaskStateToString(eTaskGetState(xHandleI2C)));
-  else
-    Serial.printf("i2c task status: disabled!\n");
-
-  if (xHandleDisplay != NULL)
-    Serial.printf("display task status: %s\n", TaskStateToString(eTaskGetState(xHandleDisplay)));
-  else
-    Serial.printf("display task status: disabled!\n");
-
-  if (xHandleDebug != NULL)
-    Serial.printf("debug task status: %s\n", TaskStateToString(eTaskGetState(xHandleDebug)));
-  else
-    Serial.printf("debug task status: disabled!\n");
-
-  // scheduler status
-  if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
-  {
-    Serial.printf("\nscheduler status: runnning\n");
-
-    // clock frequency
-    rtc_cpu_freq_config_t clock_config;
-    rtc_clk_cpu_freq_get_config(&clock_config);
-    Serial.printf("cpu frequency: %dMHz\n", clock_config.freq_mhz);
-  }
-  else
-  {
-    Serial.printf("\nscheduler status: failed\nhalting operations!!!");
-    while (1)
-    {
-    };
-  }
   Serial.printf("\n|--- end setup ---|\n\n");
-  // ---------------------------------------------------------------------------------------- //
+  // -------------------------------------------------------------------------- //
 }
 
 /*
@@ -351,131 +490,246 @@ void setup()
 */
 
 /**
- * @brief reads I/O
+ * @brief reads and writes I/O
  * @param pvParameters parameters passed to task
  */
-void IOReadTask(void *pvParameters)
+void IoTask(void *pvParameters)
 {
-  // get task tick
+  // inits
+  const TickType_t xFrequency = pdMS_TO_TICKS(IO_REFRESH_RATE);
   TickType_t taskLastWakeTick = xTaskGetTickCount();
 
   for (;;)
   {
     // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, IO_READ_REFRESH_RATE);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
 
-    // check for mutex availability
-    if (xSemaphoreTake(xSemaphore, (TickType_t)0))
+    // collect system information
+    g_systemData.inputFlags = ButtonInputHandler();
+
+    // do time keeping
+    unsigned long now = millis();
+    if (now - lastBatteryCheckTime >= BATTERY_POLL_INTERVAL)
     {
-
-      // debugging
-      if (debugger.debugEnabled)
-      {
-        debugger.ioReadTaskCount++;
-      }
+      g_systemData.power = BatteryManager();
+      lastBatteryCheckTime = now;
     }
-  }
-}
 
-/**
- * @brief writes I/O
- * @param pvParameters parameters passed to task
- */
-void IOWriteTask(void *pvParameters)
-{
-  // get task tick
-  TickType_t taskLastWakeTick = xTaskGetTickCount();
-
-  for (;;)
-  {
-    // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, IO_WRITE_REFRESH_RATE);
-
-    // check for mutex availability
-    if (xSemaphoreTake(xSemaphore, (TickType_t)0))
+    // display event handler
+    switch (g_systemData.display.displayMode)
     {
-
-      // debugging
-      if (debugger.debugEnabled)
+    case GPS_MODE:
+      if (g_systemData.inputFlags.returnShortPress)
       {
-        debugger.ioWriteTaskCount++;
+        g_systemData.display.displayMode = WAYPOINT_MODE;
+        previousSelectedWaypoint = -1; // force computation of vector
       }
-    }
-  }
-}
-
-/**
- * @brief i2c bus
- * @param pvParameters parameters passed to task
- */
-void I2CTask(void *pvParameters)
-{
-  // get task tick
-  TickType_t taskLastWakeTick = xTaskGetTickCount();
-
-  for (;;)
-  {
-    // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, I2C_REFRESH_RATE);
-
-    // check for mutex availability
-    if (xSemaphoreGive(xSemaphore)) // TODO: add error handeling
-    {
-      // read gps data
-      while (gps.read() != 0)
+      if (g_systemData.inputFlags.returnLongPress)
       {
-        if (gps.newNMEAreceived() == true)
+        g_systemData.display.displayMode = GPS_MODE;
+      }
+      break;
+
+    case WAYPOINT_MODE:
+      if (g_systemData.inputFlags.selectShortPress)
+      {
+        g_systemData.waypointData.selectedWaypoint++;
+        if (g_systemData.waypointData.selectedWaypoint >= (g_systemData.waypointData.waypoints.size()))
         {
-          gps.parse(gps.lastNMEA()); // this sets the newNMEAreceived() flag to false
-
-          // connection data
-          data.connected = gps.fix;
-          data.fixQuality = gps.fixquality;
-
-          data.numSats = gps.satellites;
-          data.dtLastFix = gps.secondsSinceFix();
-          data.dtSinceTime = gps.secondsSinceTime();
-          data.dtSinceTime = gps.secondsSinceDate();
-
-          // collect location data
-          data.latitude = gps.latitudeDegrees;
-          data.longitude = gps.longitudeDegrees;
-          data.altitude = gps.altitude;
-
-          // collect vector data
-          data.speed = gps.speed; // speed is given in knots
-          data.angle = gps.angle;
-
-          // not enough resolution for accurately measuring very low speeds
-          if (data.speed > MIN_SPEED)
-          {
-            data.speed = data.speed * KNOTS_TO_MPH; // convert to mph
-          }
-          else
-          {
-            data.speed = 0;
-            data.angle = 0;
-          }
-
-          // collect date data
-          data.year = gps.year + 2000;
-          data.month = gps.month;
-          data.day = gps.day;
-
-          // collect time data
-          data.hour = gps.hour;
-          data.minute = gps.minute;
-          data.second = gps.seconds;
-
-          data.validDate = IsValidDate();
+          g_systemData.waypointData.selectedWaypoint = 0;
         }
       }
 
-      // debugging
-      if (debugger.debugEnabled)
+      if (g_systemData.inputFlags.returnShortPress)
       {
-        debugger.i2cTaskCount++;
+        g_systemData.display.displayMode = SYSTEM_MODE;
       }
+      if (g_systemData.inputFlags.returnLongPress)
+      {
+        g_systemData.display.displayMode = GPS_MODE;
+      }
+      break;
+
+    case SYSTEM_MODE:
+      if (g_systemData.inputFlags.selectShortPress)
+      {
+        g_systemData.display.displayMode = SLEEP_PROMPT_MODE;
+        g_drewMoonIcon = false;
+      }
+
+      if (g_systemData.inputFlags.optionShortPress)
+      {
+        g_systemData.display.displayMode = FLASHLIGHT_MODE;
+      }
+
+      if (g_systemData.inputFlags.returnShortPress)
+      {
+        g_systemData.display.displayMode = GPS_MODE;
+        g_systemData.power.sleepModeEnable = false;
+      }
+      if (g_systemData.inputFlags.returnLongPress)
+      {
+        g_systemData.display.displayMode = GPS_MODE;
+        g_systemData.power.sleepModeEnable = false;
+      }
+      break;
+
+    case SLEEP_PROMPT_MODE:
+      if (g_systemData.inputFlags.returnShortPress)
+      {
+        g_systemData.display.displayMode = SYSTEM_MODE;
+        g_systemData.power.sleepModeEnable = false;
+      }
+      if (g_systemData.inputFlags.optionShortPress)
+      {
+        g_systemData.power.sleepModeEnable = true;
+      }
+      break;
+
+    case FLASHLIGHT_MODE:
+      if (g_systemData.inputFlags.optionShortPress)
+      {
+        g_systemData.enableFlashlight = !g_systemData.enableFlashlight;
+      }
+
+      if (g_systemData.inputFlags.returnShortPress)
+      {
+        g_systemData.display.displayMode = SYSTEM_MODE;
+      }
+      break;
+
+    default:
+      g_systemData.display.displayMode = ERROR_MODE;
+
+      if (g_systemData.inputFlags.returnShortPress)
+      {
+        g_systemData.display.displayMode = GPS_MODE;
+      }
+      break;
+    }
+
+    // --- sleep logic --- //
+    if (g_systemData.power.sleepModeEnable)
+    {
+      // turn off display and gps module power
+      gpsModule.standby();
+      digitalWrite(GPS_ENABLE_PIN, LOW);
+      gpio_hold_en((gpio_num_t)GPS_ENABLE_PIN);
+      digitalWrite(TFT_I2C_POWER, LOW);
+      batteryModule.sleep(true);
+
+      esp_deep_sleep_start();
+    }
+    // --- sleep logic --- //
+
+    // send data to the display
+    xQueueOverwrite(xIoQueue, &g_systemData);
+
+    // debugging
+    if (debugger.debugEnabled)
+    {
+      debugger.ioTaskCount++;
+    }
+  }
+}
+
+/**
+ * @brief gps
+ * @param pvParameters parameters passed to task
+ */
+void GpsTask(void *pvParameters)
+{
+  // inits
+  const TickType_t xFrequency = pdMS_TO_TICKS(GPS_REFRESH_RATE);
+  TickType_t taskLastWakeTick = xTaskGetTickCount();
+
+  for (;;)
+  {
+    // limit task refresh rate
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
+
+    // read gps data
+    while (gpsModule.read() != 0)
+    {
+      // process gps data
+      if (gpsModule.newNMEAreceived())
+      {
+        if (gpsModule.parse(gpsModule.lastNMEA())) // this sets the newNMEAreceived() flag to false
+        {
+          // connection
+          g_gpsData.numSats = gpsModule.satellites;
+          g_gpsData.fixQuality = gpsModule.fixquality;
+          if (gpsModule.secondsSinceFix() < DELTA_FIX_HARDSTOP)
+          {
+            g_gpsData.dtLastFix = gpsModule.secondsSinceFix();
+          }
+          else
+          {
+            g_gpsData.dtLastFix = -1;
+          }
+
+          g_gpsData.dtSinceTime = gpsModule.secondsSinceTime();
+          g_gpsData.dtSinceTime = gpsModule.secondsSinceDate();
+
+          //  location
+          g_gpsData.latitude = gpsModule.latitudeDegrees;
+          g_gpsData.longitude = gpsModule.longitudeDegrees;
+          g_gpsData.altitude = gpsModule.altitude * METERS_TO_FEET;
+
+          // vector
+          g_gpsData.speed = gpsModule.speed; // speed is given in knots
+          g_gpsData.heading = gpsModule.angle;
+
+          // apply velocity deadband
+          if (g_gpsData.speed >= MIN_SPEED)
+          {
+            g_gpsData.speed = g_gpsData.speed * KNOTS_TO_MPH; // convert to mph
+          }
+          else
+          {
+            g_gpsData.speed = 0.0f;
+            g_gpsData.heading = 0.0f;
+          }
+
+          // data
+          g_gpsData.year = gpsModule.year + 2000;
+          g_gpsData.month = gpsModule.month;
+          g_gpsData.day = gpsModule.day;
+          g_gpsData.validDate = (g_gpsData.year >= INIT_OPERATING_YEAR && g_gpsData.year < EOL_YEAR) ? true : false; // determine if date time information is valid
+
+          // time
+          g_gpsData.hour = gpsModule.hour;
+          g_gpsData.minute = gpsModule.minute;
+          g_gpsData.second = gpsModule.seconds;
+        }
+      }
+    }
+
+    // sync data
+    xQueueOverwrite(xGpsQueue, &g_gpsData);
+
+    // debugging
+    if (debugger.debugEnabled)
+    {
+      // Serial.printf("fix: %s\n", gpsModule.fix ? "yes" : "no");
+      // Serial.printf("# sats: %d\n", gpsModule.satellites);
+
+      // Serial.printf("time: %d:%d:%d\n", gpsModule.hour, gpsModule.minute, gpsModule.seconds);
+      // Serial.printf("date: %d-%d-%d\n", gpsModule.year, gpsModule.month, gpsModule.day);
+
+      // Serial.printf("lat: %f\n", gpsModule.latitude);
+      // Serial.printf("long: %f\n", gpsModule.longitude);
+      // Serial.printf("alt: %f\n", gpsModule.altitude);
+
+      // Serial.printf("dt-fix: %f\n", gpsModule.secondsSinceFix());
+      // Serial.printf("dt-time: %f\n", gpsModule.secondsSinceTime());
+      // Serial.printf("dt-date: %f\n", gpsModule.secondsSinceDate());
+
+      // char c = gpsModule.read();
+      // if (c)
+      //   Serial.print(c);
+
+      debugger.gpsTaskCount++;
     }
   }
 }
@@ -486,188 +740,62 @@ void I2CTask(void *pvParameters)
  */
 void DisplayTask(void *pvParameters)
 {
-  // get task tick
+  // inits
+  const TickType_t xFrequency = pdMS_TO_TICKS(DISPLAY_REFRESH_RATE);
   TickType_t taskLastWakeTick = xTaskGetTickCount();
+  SystemDataType dataframe;
+  GpsDataType gps;
 
   for (;;)
   {
     // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, DISPLAY_REFRESH_RATE);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
 
-    // check for mutex availability
-    if (xSemaphoreTake(xSemaphore, (TickType_t)0))
+    // copy data
+    xQueuePeek(xIoQueue, &dataframe, 0);
+    xQueuePeek(xGpsQueue, &gps, 0);
+
+    if (dataframe.display.displayMode != previousDisplayMode)
     {
+      displayModule.fillScreen(ST77XX_BLACK);
+    }
 
-      int semaphoreCount = uxSemaphoreGetCount(xSemaphore);
-      while (semaphoreCount > 0)
-      {
-        xSemaphoreTake(xSemaphore, (TickType_t)0);
-        semaphoreCount--;
-      }
+    // status bar
+    DisplayStatusBar(dataframe, gps);
 
-      // location data
-      tft.setTextSize(2);
-      tft.setTextColor(TFT_CYAN, TFT_BLACK, true);
-      if (data.numSats >= 3)
-      {
-        tft.setCursor(5, 30);
-        tft.printf("latitude: %.5f", data.latitude);
+    // main information
+    switch (dataframe.display.displayMode)
+    {
+    case GPS_MODE:
+      DisplayGpsData(gps);
+      break;
 
-        tft.setCursor(5, 50);
-        tft.printf("longitude: %.5f", data.longitude);
+    case WAYPOINT_MODE:
+      DisplayWaypoint(dataframe, gps);
+      break;
 
-        tft.setCursor(5, 70);
-        tft.printf("altitude: %d m        ", (int)data.altitude);
-      }
-      else
-      {
-        tft.setCursor(5, 30);
-        tft.printf("latitude:  ---.---    ");
+    case SYSTEM_MODE:
+      DisplaySystem(dataframe);
+      break;
 
-        tft.setCursor(5, 50);
-        tft.printf("longitude: ---.---    ");
+    case SLEEP_PROMPT_MODE:
+      DisplaySleepPrompt(dataframe);
+      break;
 
-        tft.setCursor(5, 70);
-        tft.printf("altitude:  ---.---    ");
-      }
+    case FLASHLIGHT_MODE:
+      DisplayFlashlight(dataframe);
+      break;
 
-      // speed data
-      tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
-      tft.setCursor(5, 95);
-      if (data.numSats > 3)
-      {
-        tft.printf("speed: %.1f mph", data.speed);
-      }
-      else
-      {
-        tft.printf("speed: ---      ", data.speed);
-      }
+    default:
+      DisplayError(dataframe);
+      break;
+    }
+    previousDisplayMode = dataframe.display.displayMode;
 
-      // angle data
-      tft.setTextColor(TFT_GOLD, TFT_BLACK, true);
-      tft.setCursor(5, 115);
-      if (data.speed > 0.5)
-      {
-        tft.printf("heading: %d deg", (int)data.angle);
-      }
-      else
-      {
-        tft.printf("heading: ---      ", data.angle);
-      }
-
-      // date and time
-      if (data.validDate)
-      {
-        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-        tft.setCursor(5, 140);
-        tft.printf("date: %d / %d / %d    ", data.year, data.month, data.day);
-
-        tft.setCursor(5, 160);
-        tft.printf("time: %d:%d:%d (UTC)      ", data.hour, data.minute, data.second);
-      }
-      else
-      {
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        tft.setCursor(5, 140);
-        tft.printf("date: -- / -- / --    ", data.year, data.month, data.day);
-
-        tft.setTextColor(TFT_MAGENTA, TFT_BLACK, true);
-        tft.setCursor(5, 160);
-        tft.printf("time: %d:%d:%d            ", data.hour, data.minute, data.second);
-      }
-
-      // sat data
-      tft.setCursor(5, 190);
-      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-      tft.printf("sats: ");
-      if (data.numSats == 0)
-      {
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-      }
-      if (data.numSats > 0 && data.numSats <= 3)
-      {
-        tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-      }
-      if (data.numSats > 3)
-      {
-        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-      }
-      tft.printf("%d ", data.numSats);
-
-      // connection type
-      tft.setCursor(130, 190);
-      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-      tft.printf("status: ");
-      switch (data.fixQuality)
-      {
-      // invalid fix quality
-      case 0:
-        if (data.validDate)
-        {
-          tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-          tft.printf("no fix ");
-        }
-        else // no fix and no date time data
-        {
-          tft.setTextColor(TFT_RED, TFT_BLACK, true);
-          tft.printf("no conn");
-        }
-        break;
-
-      // gps fix quality
-      case 1:
-        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-        tft.printf("gps    ");
-        break;
-
-      // d-gps fixed quality
-      case 2:
-        tft.setTextColor(TFT_BLUE, TFT_BLACK, true);
-        tft.printf("d-gps  ");
-        break;
-
-      // catch statement
-      default:
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        tft.printf("err:%d ", data.fixQuality);
-        break;
-      }
-
-      // time since last fix
-      tft.setCursor(5, 220);
-      tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
-      tft.printf("dt-fix: ");
-      if (data.dtLastFix < 1.0)
-      {
-        tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-        tft.printf("%.2f seconds    ", data.dtLastFix);
-      }
-      else if (data.dtLastFix < 120 && data.dtLastFix > 1.0) // been a bit since a connection
-      {
-        tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-        tft.printf("%.2f seconds    ", data.dtLastFix);
-      }
-      else // longer than a minute without a fix
-      {
-        tft.setTextColor(TFT_RED, TFT_BLACK, true);
-        if (data.validDate)
-        {
-          tft.printf("> 2 minutes     ", data.dtLastFix);
-        }
-        else
-        {
-          tft.printf("unreliable data", data.dtLastFix);
-        }
-      }
-
-      // activity animation
-      ActivityAnimation();
-
-      // debugging
-      if (debugger.debugEnabled)
-      {
-        debugger.displayTaskCount++;
-      }
+    // debugging
+    if (debugger.debugEnabled)
+    {
+      debugger.displayTaskCount++;
     }
   }
 }
@@ -687,9 +815,9 @@ void DebugTask(void *pvParameters)
     }
 
     // i2c
-    if (debugger.i2c_debugEnabled)
+    if (debugger.gps_debugEnabled)
     {
-      PrintI2CDebug();
+      PrintGpsDebug();
     }
 
     // display
@@ -728,171 +856,859 @@ void loop()
 */
 
 /**
- * @brief converts an rtos task state to printable string format
- * @param state = rtos task state
+ * @brief converts a value in degrees to radians
+ * @param degrees - the value to be convereted to radians
  */
-String TaskStateToString(eTaskState state)
+float DegreesToRadians(float degrees)
 {
-  // init
-  String stateStr;
-
-  // get state
-  switch (state)
-  {
-  case eReady:
-    stateStr = "RUNNING";
-    break;
-
-  case eBlocked:
-    stateStr = "BLOCKED";
-    break;
-
-  case eSuspended:
-    stateStr = "SUSPENDED";
-    break;
-
-  case eDeleted:
-    stateStr = "DELETED";
-    break;
-
-  default:
-    stateStr = "ERROR";
-    break;
-  }
-
-  return stateStr;
+  return (degrees * PI / 180.0);
 }
 
 /**
- * @brief determine if the real-time clock is cold started or warm started
+ * @brief converts a value in degrees to radian
+ * @param radians - the value to be convereted to degrees
  */
-bool IsValidDate()
+float RadiansToDegrees(float rad)
 {
-  // test for valid year data
-  if (data.year >= FINAL_VALID_OPERATING_YEAR || data.year < START_VALID_OPERATING_YEAR)
+  return rad * (180.0 / PI);
+}
+
+/**
+ * use the haversine formula to calculate the disance between two gps points on earth
+ */
+float CalculateWaypointDistance(GpsDataType gps, WaypointCoordinatesType waypoint)
+{
+  // inits
+  double dLat = DegreesToRadians(waypoint.latitude - gps.latitude);
+  double dLon = DegreesToRadians(waypoint.longitude - gps.longitude);
+
+  // calculate!
+  double a = sin(dLat / 2) * sin(dLat / 2) +
+             cos(DegreesToRadians(gps.latitude)) * cos(DegreesToRadians(waypoint.longitude)) *
+                 sin(dLon / 2) * sin(dLon / 2);
+
+  double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+
+  return RADIUS_OF_EARTH * c; // result in meters
+}
+
+/**
+ * use the a funky formula to calculate the bearing from gps point 1 to gps point 2
+ */
+float CalculateWaypointBearing(GpsDataType gps, WaypointCoordinatesType waypoint)
+{
+  // inits
+  double phi1 = DegreesToRadians(gps.latitude);
+  double phi2 = DegreesToRadians(waypoint.latitude);
+  double dLon = DegreesToRadians(waypoint.longitude - gps.longitude);
+
+  // calculate!
+  double y = sin(dLon) * cos(phi2);
+  double x = cos(phi1) * sin(phi2) -
+             sin(phi1) * cos(phi2) * cos(dLon);
+  double bearing = atan2(y, x);
+  bearing = RadiansToDegrees(bearing);
+
+  if (bearing < 0)
   {
-    return false; // gps indicating invalid operating year
+    bearing += 360.0; // normalize
+  }
+
+  return bearing;
+}
+
+/**
+ * @brief handler for setting flags for button inputs
+ */
+InputFlagsType ButtonInputHandler()
+{
+  // inits
+  InputFlagsType iF = {
+      .selectShortPress = false,
+      .selectLongPress = false,
+      .optionShortPress = false,
+      .optionLongPress = false,
+      .returnShortPress = false,
+      .returnLongPress = false,
+      .specialShortPress = false,
+      .specialLongPress = false,
+  };
+
+  // --- select button --- //
+  bool selectButtonState = digitalRead(SELECT_BUTTON);
+
+  if (selectButtonState != selectButtonPreviousState)
+  {
+    selectButtonCounter = millis();
+    selectButtonPreviousState = selectButtonState;
+
+    // check specifically for LOW -> HIGH
+    if (selectButtonPreviousState == HIGH)
+    {
+      if (millis() - selectButtonCounter > SHORT_PRESS_DURATION)
+      {
+        iF.selectLongPress = true;
+      }
+      else
+      {
+        iF.selectShortPress = true;
+      }
+    }
+  }
+  selectButtonPreviousState = selectButtonState;
+  // --- select button --- //
+
+  // --- option button --- //
+  bool optionButtonState = digitalRead(OPTION_BUTTON);
+
+  if (optionButtonState != optionButtonPreviousState)
+  {
+    optionButtonCounter = millis();
+    optionButtonPreviousState = optionButtonState;
+
+    // check specifically for HIGH -> LOW
+    if (optionButtonPreviousState == LOW)
+    {
+      if (millis() - optionButtonCounter > SHORT_PRESS_DURATION)
+      {
+        iF.optionLongPress = true;
+      }
+      else
+      {
+        iF.optionShortPress = true;
+      }
+    }
+  }
+  optionButtonPreviousState = optionButtonState;
+  // --- option button --- //
+
+  // --- return button --- //
+  bool returnButtonState = digitalRead(RETURN_BUTTON);
+
+  if (returnButtonState != returnButtonPreviousState)
+  {
+    returnButtonCounter = millis();
+    returnButtonPreviousState = returnButtonState;
+
+    // check specifically for HIGH -> LOW
+    if (returnButtonPreviousState == LOW)
+    {
+      if (millis() - returnButtonCounter > SHORT_PRESS_DURATION)
+      {
+        iF.returnLongPress = true;
+      }
+      else
+      {
+        iF.returnShortPress = true;
+      }
+    }
+  }
+  returnButtonPreviousState = returnButtonState;
+  // --- return button --- //
+
+  return iF;
+}
+
+/**
+ * @brief collect information related to the battery
+ */
+PowerDataType BatteryManager()
+{
+  // init
+  PowerDataType pm = {
+      .lowBatteryModeEnable = false,
+      .sleepModeEnable = false,
+      .batteryPercent = 0.0f,
+      .batteryVoltage = 0.0f,
+      .batteryChargeRate = 0.0f,
+      .alertStatus = false,
+  };
+
+  // poll battery chip
+  pm.batteryPercent = batteryModule.cellPercent();
+  pm.batteryVoltage = batteryModule.cellVoltage();
+  pm.batteryChargeRate = batteryModule.chargeRate();
+
+  // --- low battery logic --- //
+  if (pm.batteryPercent <= LOW_BATTERY_THRESHOLD)
+  {
+    pm.lowBatteryModeEnable = true;
+  }
+  // --- low battery logic --- //
+
+  return pm;
+}
+
+/*
+===============================================================================================
+                                    display functions
+===============================================================================================
+*/
+
+/**
+ * @brief general gps data screen
+ */
+void DisplayGpsData(GpsDataType gps)
+{
+  // debug
+  // gps.validDate = true;
+  // gps.fixQuality = 1,
+  // gps.dtLastFix = 0.0f,
+  // gps.dtSinceDate = 0.0f;
+  // gps.dtSinceTime = 0.0f;
+  // gps.latitude = 44.4788300;
+  // gps.longitude = -73.205870;
+  // gps.altitude = 4324.1;
+  // gps.speed = 3.1;
+  // gps.heading = 271;
+  // gps.year = 2025;
+  // gps.month = 1;
+  // gps.day = 3;
+  // gps.hour = 1;
+  // gps.minute = 4;
+  // gps.second = 3;
+  // gps.timeout = 0;
+  // gps.numSats = 4;
+
+  // location
+  displayModule.setTextSize(2);
+  displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
+  if (gps.numSats >= MIN_SATS)
+  {
+    displayModule.setCursor(5, 30);
+    displayModule.printf("%.5f", gps.latitude);
+
+    displayModule.setCursor(130, 30);
+    displayModule.printf("%.5f", gps.longitude);
+
+    displayModule.setCursor(90, 55);
+    displayModule.printf("%4.1f ft ", gps.altitude);
   }
   else
   {
-    return true;
+    displayModule.setCursor(5, 30);
+    displayModule.printf("--.-----");
+
+    displayModule.setCursor(140, 30);
+    displayModule.printf("--.-----");
+
+    displayModule.setCursor(70, 55);
+    displayModule.printf("----.- ft ");
+  }
+
+  // speed
+  displayModule.setTextSize(2);
+  displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+  displayModule.setCursor(5, 90);
+  if (gps.numSats > MIN_SATS)
+  {
+    displayModule.printf("%.1fmph ", gps.speed);
+  }
+  else
+  {
+    displayModule.printf("--.-mph ");
+  }
+
+  // heading
+  displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
+  displayModule.setCursor(190, 90);
+  if (gps.speed > MIN_SPEED)
+  {
+    displayModule.printf("%03d%c", (int)gps.heading, 0xF7);
+  }
+  else
+  {
+    displayModule.printf("---%c", 0xF7);
+  }
+
+  // TODO: draw compass
+  // displayModule.drawCircle(115, 100, 10, ST77XX_WHITE);
+  // displayModule.drawLine()
+
+  // date and time
+  displayModule.setTextSize(1);
+  if (gps.validDate)
+  {
+    displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+    displayModule.setCursor(180, 115);
+    displayModule.printf("%04d/%02d/%02d", gps.year, gps.month, gps.day);
+
+    displayModule.setCursor(156, 125);
+    displayModule.printf("%02d:%02d:%02d (UTC)", gps.hour, gps.minute, gps.second);
+  }
+  else
+  {
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    displayModule.setCursor(180, 115);
+    displayModule.printf("----/--/--");
+    displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+    displayModule.setCursor(156, 125);
+    displayModule.printf("--:--:-- (UTC)");
+  }
+
+  // sats
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  displayModule.setCursor(0, 115);
+  displayModule.printf("sats: ");
+
+  if (gps.numSats == 0)
+  {
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  }
+  else if (gps.numSats > 0 && gps.numSats <= MIN_SATS)
+  {
+    displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
+  }
+  else if (gps.numSats > MIN_SATS)
+  {
+    displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  }
+  displayModule.printf("%d ", gps.numSats);
+
+  // time since last fix
+  displayModule.setTextSize(1);
+  displayModule.setCursor(0, 125);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  displayModule.printf("dt-fix: ");
+  if (gps.validDate)
+  {
+    if (gps.dtLastFix > 0 && gps.dtLastFix < 1.0)
+    {
+      displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+    }
+    else if (gps.dtLastFix < 60 && gps.dtLastFix > 1.0) // been a bit since a connection
+    {
+      displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+    }
+    else // longer than a minute without a fix
+    {
+      displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
+    }
+    displayModule.printf("%.2fs       ", gps.dtLastFix);
+  }
+  else
+  {
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    displayModule.printf("no rtc      ");
   }
 }
 
 /**
- * @brief displays animation about current activity
+ * @brief the waypoint screen
  */
-void ActivityAnimation()
+void DisplayWaypoint(SystemDataType sd, GpsDataType gps)
 {
-  tft.setTextSize(1);
-  tft.setCursor(220, 10);
+  // gps.validDate = false;
+  // gps.fixQuality = 1,
+  // gps.dtLastFix = 0.0f,
+  // gps.dtSinceDate = 0.0f;
+  // gps.dtSinceTime = 0.0f;
+  // gps.latitude = 44.4788300;
+  // gps.longitude = -73.205870;
+  // gps.altitude = 0.0f;
+  // gps.speed = 3.1;
+  // gps.heading = 271;
+  // gps.year = 2025;
+  // gps.month = 11;
+  // gps.day = 31;
+  // gps.hour = 12;
+  // gps.minute = 34;
+  // gps.second = 53;
+  // gps.timeout = 0;
+  // gps.numSats = 4;
 
-  switch (data.fixQuality)
+  // ensure there is valid waypoint data
+  if (!sd.waypointData.waypoints.empty())
   {
-  // invalid fix quality
-  case 0:
-    if (data.validDate)
-    {
-      // arrows building inwards
-      tft.setTextColor(TFT_ORANGE, TFT_BLACK, true);
-      switch (displayRefreshCounter)
-      {
-      case 0:
-        tft.printf("     <>     ");
-        displayRefreshCounter++;
-        break;
-      case 1:
-        tft.printf("~    <>    ~");
-        displayRefreshCounter++;
-        break;
-      case 2:
-        tft.printf("~~   <>   ~~");
-        displayRefreshCounter++;
-        break;
-      case 3:
-        tft.printf("~~~  <>  ~~~");
-        displayRefreshCounter++;
-        break;
-      case 4:
-        tft.printf("~~~> <> <~~~");
-        displayRefreshCounter = 0;
-        break;
+    // waypoint selector
+    displayModule.setTextSize(1);
+    displayModule.setCursor(0, 20);
+    displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
+    displayModule.printf("waypoint: %d", sd.waypointData.selectedWaypoint);
 
-      default:
-        displayRefreshCounter = 0;
-        break;
-      }
-    }
-    else
-    {
-      // arrows building outwards
-      tft.setTextColor(TFT_RED, TFT_BLACK, true);
-      switch (displayRefreshCounter)
-      {
-      case 0:
-        tft.printf("     <>     ");
-        displayRefreshCounter++;
-        break;
-      case 1:
-        tft.printf("   - <> -   ");
-        displayRefreshCounter++;
-        break;
-      case 2:
-        tft.printf("  -- <> --  ");
-        displayRefreshCounter++;
-        break;
-      case 3:
-        tft.printf(" --- <> --- ");
-        displayRefreshCounter++;
-        break;
-      case 4:
-        tft.printf("<--- <> --->");
-        displayRefreshCounter = 0;
-        break;
+    // display waypoint coordinates
+    displayModule.setCursor(0, 30);
+    displayModule.printf("lat: %.5f", sd.waypointData.waypoints.at(sd.waypointData.selectedWaypoint).latitude);
 
-      default:
-        displayRefreshCounter = 0;
-        break;
-      }
+    displayModule.setCursor(0, 40);
+    displayModule.printf("long: %.5f", sd.waypointData.waypoints.at(sd.waypointData.selectedWaypoint).longitude);
+
+    displayModule.setCursor(0, 50);
+    displayModule.printf("name: %s                 ", sd.waypointData.waypoints.at(sd.waypointData.selectedWaypoint).name.c_str());
+
+    // display current coordinates
+    displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
+    displayModule.setCursor(150, 20);
+    displayModule.printf("current:");
+
+    displayModule.setCursor(150, 30);
+    displayModule.printf("lat: %.5f", gps.latitude);
+
+    displayModule.setCursor(150, 40);
+    displayModule.printf("long: %.5f", gps.longitude);
+
+    // do time keeping
+    bool staleVector = false;
+    unsigned long now = millis();
+    if (now - waypointLastComputeTime >= REFRESH_WAYPOINT_VECTOR_DELAY)
+    {
+      staleVector = true;
+      waypointLastComputeTime = now;
     }
+
+    // compute and then show calcuations on select short press
+    if (sd.waypointData.selectedWaypoint != previousSelectedWaypoint || staleVector)
+    {
+      WaypointCoordinatesType waypoint = sd.waypointData.waypoints.at(sd.waypointData.selectedWaypoint);
+
+      // inits
+      displayModule.setTextSize(2);
+      displayModule.setCursor(0, 70);
+      displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+      displayModule.printf("vector ->");
+
+      displayModule.setCursor(0, 90);
+      displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+      displayModule.printf("%.2f miles      ", CalculateWaypointDistance(gps, waypoint));
+      displayModule.setCursor(0, 110);
+      displayModule.printf("@ %.0f%c  ", CalculateWaypointBearing(gps, waypoint), 0xF7);
+    }
+    previousSelectedWaypoint = sd.waypointData.selectedWaypoint;
+  }
+  else
+  {
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    displayModule.setCursor(40, 100);
+    displayModule.printf("[ error loading waypoints ]");
+  }
+}
+
+/**
+ * @brief system information screen
+ */
+void DisplaySystem(SystemDataType sd)
+{
+  displayModule.setTextSize(2);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+
+  // display battery percent charge
+  if (sd.power.batteryPercent >= HALF_BATTERY_CAPACITY)
+  {
+    displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  }
+  else if (sd.power.batteryPercent > LOW_BATTERY_CAPACITY)
+  {
+    displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+  }
+  else
+  {
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  }
+  displayModule.setCursor(0, 30);
+  displayModule.printf("battery: %.1f%% ", sd.power.batteryPercent);
+
+  // display battery voltage
+  if (sd.power.batteryVoltage >= HIGH_BATTERY_VOLTAGE)
+  {
+    displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  }
+  else if (sd.power.batteryVoltage > LOW_BATTERY_VOLTAGE)
+  {
+    displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
+  }
+  else
+  {
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  }
+  displayModule.setCursor(0, 50);
+  displayModule.printf("voltage: %.3fv", sd.power.batteryVoltage);
+
+  if (sd.power.batteryChargeRate >= 0.0f)
+  {
+    displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  }
+  else
+  {
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  }
+  displayModule.setCursor(0, 70);
+  displayModule.printf("rate: %.1f %%/h  ", sd.power.batteryChargeRate);
+
+  // uptime
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  displayModule.setTextSize(1);
+  displayModule.setCursor(0, 110);
+
+  // parse out time increments
+  unsigned long long total_ms = (esp_rtc_get_time_us() + 500ULL) / 1000ULL; // rounded to nearest ms
+  unsigned int hours = total_ms / 3600000ULL;
+  total_ms %= 3600000ULL;
+  unsigned int minutes = total_ms / 60000ULL;
+  total_ms %= 60000ULL;
+  unsigned int secs = total_ms / 1000ULL;
+  total_ms %= 1000ULL;
+  unsigned int centis = total_ms / 10ULL; // hundredths of a second (0–99)
+  displayModule.printf("uptime: %02u:%02u:%02u:%02u    ", hours, minutes, secs, centis);
+
+  // firmware verison info
+  displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+  displayModule.setTextSize(1);
+  displayModule.setCursor(0, 120);
+  displayModule.printf("firmware: %d.%d \"%s\"", FIRMWARE_MAJOR, FIRMWARE_MINOR, FIRMWARE_NAME);
+
+  // display refresh rate
+  refreshRateCounter++;
+  unsigned long now = millis();
+  if (now - refreshRateLastTime >= DISPLAY_REFRESH_RATE_CALCULATE_INTERVAL)
+  {                                                                                // 1 second passed
+    float refreshRate = refreshRateCounter * 1000.0 / (now - refreshRateLastTime); // Hz
+    refreshRateCounter = 0;
+    refreshRateLastTime = now;
+
+    displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
+    displayModule.setTextSize(1);
+    displayModule.setCursor(190, 120);
+    displayModule.printf("%.2fHz ", refreshRate);
+  }
+}
+
+/**
+ * @brief display a status bar at the top of the screen with important information
+ */
+void DisplayStatusBar(SystemDataType sd, GpsDataType gps)
+{
+  // inits
+  int textY = 5;
+
+  // --- mode --- //
+  String mode;
+  int underscoreLength;
+  displayModule.setCursor(0, textY);
+  displayModule.setTextSize(1);
+  switch (sd.display.displayMode)
+  {
+  case GPS_MODE:
+    mode = "gps";
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
     break;
 
-  // gps fix quality
-  case 1:
-    // arrows building inwards
-    tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-    switch (displayRefreshCounter)
-    {
-    case 0:
-      tft.printf("     <>     ");
-      displayRefreshCounter++;
-      break;
-    case 1:
-      tft.printf("-    <>    -");
-      displayRefreshCounter++;
-      break;
-    case 2:
-      tft.printf("--   <>   --");
-      displayRefreshCounter++;
-      break;
-    case 3:
-      tft.printf("---  <>  ---");
-      displayRefreshCounter++;
-      break;
-    case 4:
-      tft.printf("---> <> <---");
-      displayRefreshCounter = 0;
-      break;
+  case WAYPOINT_MODE:
+    mode = "waypoints";
+    displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
+    break;
 
-    default:
-      displayRefreshCounter = 0;
-      break;
-    }
+  case SYSTEM_MODE:
+    mode = "system";
+    displayModule.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
+    break;
+
+  case SLEEP_PROMPT_MODE:
+    mode = "hibernate";
+    displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    break;
+
+  case FLASHLIGHT_MODE:
+    mode = "flashlight";
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
     break;
 
   default:
+    mode = "error";
+    displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
     break;
   }
+  displayModule.printf("<%s>", mode.c_str());
+  // --- mode --- //
+
+  // --- gps fix status --- //
+  std::pair<uint16_t, uint16_t> colors = FixStatusColorManager(gps.fixQuality, gps.validDate);
+  displayModule.setTextColor(colors.first, colors.second);
+  displayModule.setTextSize(1);
+  displayModule.setCursor(80, textY);
+  displayModule.printf("gps");
+  // --- gps fix status --- //
+
+  // --- time --- //
+  displayModule.setTextSize(1);
+  displayModule.setCursor(135, textY);
+  if (gps.validDate)
+  {
+    displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    displayModule.printf("%02d:%02d:%02d", gps.hour, gps.minute, gps.second);
+  }
+  else
+  {
+    displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    displayModule.printf("--:--:--");
+  }
+  // --- time --- //
+
+  // --- battery --- //
+  // write battery percentage
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  String buffer = String((int)sd.power.batteryPercent).substring(0, 3);
+  uint16_t strLen = buffer.length();
+  uint16_t batterySymbolWidth = (strLen * 8) + 10;               // +10 for % symbol
+  uint16_t batterySymbolX = 240 - (batterySymbolWidth + strLen); // screen width - (text + symbol width)
+  uint16_t batteryTextX = batterySymbolX + 5;                    // center the text in the battery symbol
+  displayModule.setCursor(batteryTextX, textY);
+  displayModule.printf("%s%% ", buffer.c_str());
+
+  // draw battery symbol
+  if (sd.power.batteryChargeRate >= 0)
+  {
+    // do time keeping
+    unsigned long now = millis();
+    if (now - lastBatteryChargeIndicatorTime >= BATTERY_CHARGING_INDICATION_DELAY) // flash the symbol at 2Hz
+    {
+      displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_GREEN);
+      lastBatteryChargeIndicatorTime = now;
+    }
+    else
+    {
+      displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_BLACK);
+    }
+  }
+  else
+  {
+    if (sd.power.batteryPercent > 50.0)
+    {
+      displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_GREEN);
+    }
+    else if (sd.power.batteryPercent > 20.0 && sd.power.batteryPercent <= 50.0)
+    {
+      displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_ORANGE);
+    }
+    else if (sd.power.batteryPercent <= 20.0)
+    {
+      displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_RED);
+    }
+  }
+
+  // --- battery --- //
+}
+
+/**
+ * @brief display screen that indicates a failure in display modes
+ */
+void DisplayError(SystemDataType sd)
+{
+  // init screen
+  displayModule.fillScreen(ST77XX_BLACK);
+
+  displayModule.setTextSize(2);
+  displayModule.setTextColor(ST77XX_RED);
+  displayModule.setCursor(75, 100);
+  displayModule.printf("[> mode error <]");
+}
+
+/**
+ * @brief idk now im just flexing hardware verticalization
+ */
+void DisplayFlashlight(SystemDataType sd)
+{
+  if (sd.enableFlashlight)
+  {
+    if (sd.enableFlashlight != updatedFlashlight)
+    {
+      displayModule.fillScreen(ST77XX_WHITE);
+    }
+  }
+  else
+  {
+    displayModule.setCursor(5, 65);
+    displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+    displayModule.setTextSize(2);
+    displayModule.printf("<] on / off");
+    if (sd.enableFlashlight != updatedFlashlight)
+    {
+      displayModule.fillScreen(ST77XX_BLACK);
+    }
+  }
+  updatedFlashlight = sd.enableFlashlight;
+}
+
+/**
+ * @brief gui for inputting a new waypoint
+ */
+void DisplayWaypointInputTool(SystemDataType sd)
+{
+  displayModule.setTextSize(1);
+  displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  displayModule.setCursor(75, 100);
+  displayModule.printf("[> waypoint input tool <]");
+}
+
+/**
+ * @brief while device is entering sleep mode popup
+ */
+void DisplaySleepPrompt(SystemDataType sd)
+{
+  displayModule.setTextSize(2);
+  displayModule.setCursor(25, 30);
+  displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  displayModule.printf("[> hibernate <]");
+
+  displayModule.setCursor(5, 65);
+  displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
+  displayModule.printf("<] confirm");
+
+  displayModule.setCursor(5, 120);
+  displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+  displayModule.printf("<] cancel");
+
+  // draw moon
+  if (!g_drewMoonIcon)
+  {
+    // moon
+    displayModule.fillCircle(180, 85, 30, ST77XX_YELLOW);
+    displayModule.fillCircle(170, 75, 30, ST77XX_BLACK);
+    DrawCloud(205, 115, 40, ST77XX_WHITE);
+    g_drewMoonIcon = true;
+  }
+}
+
+/**
+ * @brief draw a cloud!
+ */
+void DrawCloud(int x, int y, int size, int color)
+{
+  // size is the "scale" of the cloud
+  int r = size / 3;
+
+  // main center puff
+  displayModule.fillCircle(x, y, r + 4, color);
+
+  // surrounding puffs
+  displayModule.fillCircle(x - r, y, r, color);
+  displayModule.fillCircle(x + r, y, r, color);
+  displayModule.fillCircle(x - r / 2, y - r, r, color);
+  displayModule.fillCircle(x + r / 2, y - r, r, color);
+  displayModule.fillCircle(x, y + r / 2, r, color);
+}
+
+/**
+ * @brief
+ * @param fixQuality - the fix status
+ * @param validData - if the date time data is good
+ * @return text color, text background color
+ */
+std::pair<uint16_t, uint16_t> FixStatusColorManager(int fixQuality, bool validDate)
+{
+  // init
+  std::pair<uint16_t, uint16_t> colors;
+  uint16_t textColor, backgroundColor;
+
+  // do time keeping
+  unsigned long now = millis();
+  if (now - colorToggleLastTime >= 1000) // toggle colors once a second
+  {
+    colorToggleEnable = !colorToggleEnable;
+    colorToggleLastTime = now;
+  }
+
+  // determine colors
+  switch (fixQuality)
+  {
+  case 0:          // no fix
+    if (validDate) // no fix but valid rtc data
+    {
+      if (colorToggleEnable)
+      {
+        textColor = ST77XX_BLACK;
+        backgroundColor = ST77XX_ORANGE;
+      }
+      else
+      {
+        textColor = ST77XX_ORANGE;
+        backgroundColor = ST77XX_BLACK;
+      }
+    }
+    else // no fix & no rtc data
+    {
+      if (colorToggleEnable)
+      {
+        textColor = ST77XX_RED;
+        backgroundColor = ST77XX_BLACK;
+      }
+      else
+      {
+        textColor = ST77XX_BLACK;
+        backgroundColor = ST77XX_RED;
+      }
+    }
+    break;
+
+  case 1: // fix
+    if (colorToggleEnable)
+    {
+      textColor = ST77XX_BLACK;
+      backgroundColor = ST77XX_GREEN;
+    }
+    else
+    {
+      textColor = ST77XX_GREEN;
+      backgroundColor = ST77XX_BLACK;
+    }
+    break;
+
+  case 2: // dgps
+    if (colorToggleEnable)
+    {
+      textColor = ST77XX_BLACK;
+      backgroundColor = ST77XX_BLUE;
+    }
+    else
+    {
+      textColor = ST77XX_BLUE;
+      backgroundColor = ST77XX_BLACK;
+    }
+
+    break;
+
+  default: // something is wrong i guess
+    if (colorToggleEnable)
+    {
+      textColor = ST77XX_BLACK;
+      backgroundColor = ST77XX_RED;
+    }
+    else
+    {
+      textColor = ST77XX_RED;
+      backgroundColor = ST77XX_BLACK;
+    }
+    break;
+  }
+
+  // build color profile
+  colors.first = textColor;
+  colors.second = backgroundColor;
+  return colors;
+}
+
+void FlashNVS()
+{
+  wpStorage.putFloat(WP_1_LAT_NVS_KEY, 44.47883);
+  wpStorage.putFloat(WP_1_LONG_NVS_KEY, -73.20587);
+  wpStorage.putString(WP_1_NAME_NVS_KEY, String("btv"));
+
+  wpStorage.putFloat(WP_2_LAT_NVS_KEY, 43.03033);
+  wpStorage.putFloat(WP_2_LONG_NVS_KEY, -72.87210);
+  wpStorage.putString(WP_2_NAME_NVS_KEY, String("cabin"));
+
+  wpStorage.putFloat(WP_3_LAT_NVS_KEY, 40.36240);
+  wpStorage.putFloat(WP_3_LONG_NVS_KEY, -74.04034);
+  wpStorage.putString(WP_3_NAME_NVS_KEY, String("fair haven"));
+
+  wpStorage.putFloat(WP_4_LAT_NVS_KEY, -100);
+  wpStorage.putFloat(WP_4_LONG_NVS_KEY, -100);
+  wpStorage.putString(WP_4_NAME_NVS_KEY, String(" "));
+
+  wpStorage.putFloat(WP_5_LAT_NVS_KEY, -100);
+  wpStorage.putFloat(WP_5_LONG_NVS_KEY, -100);
+  wpStorage.putString(WP_5_NAME_NVS_KEY, String(" "));
 }
 
 /*
@@ -908,49 +1724,62 @@ void PrintIODebug()
 {
   Serial.printf("\n--- start i/o debug ---\n");
 
+  // Serial.printf("select short cntr: %d\n", selectButtonCounter);
+  // Serial.printf("option short cntr: %d\n", optionButtonCounter);
+  // Serial.printf("return short cntr: %d\n", returnButtonCounter);
+
+  // Serial.printf("select short: %s\n", debugger.inputFlags.selectShortPress ? "on" : "off");
+  // Serial.printf("select long: %s\n", systemManager.inputFlags.selectLongPress ? "on" : "off");
+
+  // Serial.printf("option short: %s\n", systemManager.inputFlags.optionShortPress ? "on" : "off");
+  // Serial.printf("option long: %s\n", systemManager.inputFlags.optionLongPress ? "on" : "off");
+
+  // Serial.printf("return short: %s\n", systemManager.inputFlags.returnShortPress ? "on" : "off");
+  // Serial.printf("return long: %s\n", systemManager.inputFlags.returnLongPress ? "on" : "off");
+
   Serial.printf("\n--- end i/o debug ---\n");
 }
 
 /**
  * @brief ic2 debugging
  */
-void PrintI2CDebug()
+void PrintGpsDebug()
 {
-  Serial.printf("\n--- start i2c debug ---\n");
+  Serial.printf("\n--- start gps debug ---\n");
 
-  debugger.debugText = "";
-  for (int i = 0; i < 100; ++i)
-  {
-    if (Serial.available())
-    {
-      char c = Serial.read();
-      gps.write(c);
-    }
-    if (gps.available())
-    {
-      char c = gps.read();
-      Serial.write(c);
+  // debugger.debugText = "";
+  // for (int i = 0; i < 100; ++i)
+  // {
+  //   if (Serial.available())
+  //   {
+  //     char c = Serial.read();
+  //     gpsModule.write(c);
+  //   }
+  //   if (gpsModule.available())
+  //   {
+  //     char c = gpsModule.read();
+  //     Serial.write(c);
 
-      debugger.debugText.concat(c);
-    }
-  }
-  Serial.printf("\n\n");
+  //     debugger.debugText.concat(c);
+  //   }
+  // }
+  // Serial.printf("\n\n");
 
-  Serial.printf("fix: %s\n", gps.fix ? "yes" : "no");
-  Serial.printf("# sats: %d\n", gps.satellites);
+  // Serial.printf("fix: %s\n", gpsModule.fix ? "yes" : "no");
+  // Serial.printf("# sats: %d\n", gps.satellites);
 
-  Serial.printf("time: %d:%d:%d\n", gps.hour, gps.minute, gps.seconds);
-  Serial.printf("date: %d-%d-%d\n", gps.year, gps.month, gps.day);
+  // Serial.printf("time: %d:%d:%d\n", gps.hour, gps.minute, gps.seconds);
+  // Serial.printf("date: %d-%d-%d\n", gps.year, gps.month, gps.day);
 
-  Serial.printf("lat: %f\n", gps.latitude);
-  Serial.printf("long: %f\n", gps.longitude);
-  Serial.printf("alt: %f\n", gps.altitude);
+  // Serial.printf("lat: %f\n", gps.latitude);
+  // Serial.printf("long: %f\n", gps.longitude);
+  // Serial.printf("alt: %f\n", gps.altitude);
 
-  Serial.printf("dt-fix: %f\n", gps.secondsSinceFix());
-  Serial.printf("dt-time: %f\n", gps.secondsSinceTime());
-  Serial.printf("dt-date: %f\n", gps.secondsSinceDate());
+  // Serial.printf("dt-fix: %f\n", gps.secondsSinceFix());
+  // Serial.printf("dt-time: %f\n", gps.secondsSinceTime());
+  // Serial.printf("dt-date: %f\n", gps.secondsSinceDate());
 
-  Serial.printf("\n--- end i2c debug ---\n");
+  Serial.printf("\n--- end gps debug ---\n");
 }
 
 /**
@@ -959,12 +1788,6 @@ void PrintI2CDebug()
 void PrintDisplayDebug()
 {
   Serial.printf("\n--- start display debug ---\n");
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(2);
-  tft.setCursor(0, 0);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK, true);
-  tft.printf("%s", debugger.debugText.c_str());
 
   Serial.printf("\n--- end display debug ---\n");
 }
@@ -975,48 +1798,20 @@ void PrintDisplayDebug()
 void PrintSchedulerDebug()
 {
   // inits
-  std::vector<eTaskState> taskStates;
-  std::vector<String> taskStatesStrings;
   std::vector<int> taskRefreshRate;
   int uptime = esp_rtc_get_time_us() / 1000000;
 
-  // gather task information
-  if (xHandleIORead != NULL)
-  {
-    taskStates.push_back(eTaskGetState(xHandleIORead));
-  }
-  if (xHandleIOWrite != NULL)
-  {
-    taskStates.push_back(eTaskGetState(xHandleIOWrite));
-  }
-  if (xHandleI2C != NULL)
-  {
-    taskStates.push_back(eTaskGetState(xHandleI2C));
-  }
-  if (xHandleDisplay != NULL)
-  {
-    taskStates.push_back(eTaskGetState(xHandleDisplay));
-  }
-
-  taskRefreshRate.push_back(debugger.ioReadTaskCount - debugger.ioReadTaskPreviousCount);
-  taskRefreshRate.push_back(debugger.ioWriteTaskCount - debugger.ioWriteTaskPreviousCount);
-  taskRefreshRate.push_back(debugger.i2cTaskCount - debugger.i2cTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.ioTaskCount - debugger.ioTaskPreviousCount);
+  taskRefreshRate.push_back(debugger.gpsTaskCount - debugger.gpsTaskPreviousCount);
   taskRefreshRate.push_back(debugger.displayTaskCount - debugger.displayTaskPreviousCount);
 
-  // make it usable
-  for (int i = 0; i < taskStates.size() - 1; ++i)
-  {
-    taskStatesStrings.push_back(TaskStateToString(taskStates.at(i)));
-  }
-
   // print
-  Serial.printf("uptime: %d | read io: <%d Hz> (%d) | write io: <%d Hz> (%d) | i2c: <%d Hz> (%d) | display: <%d Hz> (%d) \r",
-                uptime, taskRefreshRate.at(0), debugger.ioReadTaskCount, taskRefreshRate.at(1), debugger.ioWriteTaskCount, taskRefreshRate.at(2),
-                debugger.i2cTaskCount, taskRefreshRate.at(3), debugger.displayTaskCount);
+  Serial.printf("uptime: %d | io: <%d Hz> (%d) | gps: <%d Hz> (%d) | display: <%d Hz> (%d) \n",
+                uptime, taskRefreshRate.at(0), debugger.ioTaskCount, taskRefreshRate.at(1), debugger.gpsTaskCount,
+                taskRefreshRate.at(2), debugger.displayTaskCount);
 
   // update counters
-  debugger.ioReadTaskPreviousCount = debugger.ioReadTaskCount;
-  debugger.ioWriteTaskPreviousCount = debugger.ioWriteTaskCount;
-  debugger.i2cTaskPreviousCount = debugger.i2cTaskCount;
+  debugger.ioTaskPreviousCount = debugger.ioTaskCount;
+  debugger.gpsTaskPreviousCount = debugger.gpsTaskCount;
   debugger.displayTaskPreviousCount = debugger.displayTaskCount;
 }

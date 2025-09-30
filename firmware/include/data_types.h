@@ -2,8 +2,8 @@
  * @file data_types.h
  * @author dom gasperini
  * @brief mini-gps
- * @version 2.0
- * @date 2024-06-08
+ * @version 5.0
+ * @date 2025-09-29
  */
 
 /*
@@ -12,6 +12,8 @@
 ========================================================
 */
 
+#include <vector>
+
 /*
 ========================================================
                     data types
@@ -19,23 +21,82 @@
 */
 
 /**
- * @brief all data about satellites
+ * @brief setup managment struct
  */
-typedef struct SatelliteData
+typedef struct
 {
-    bool active;
-    int elevation;
-    int azimuth;
-    int snr;
-} SatelliteData;
+    bool ioActive;
+    bool displayActive;
+    bool gpsActive;
+} InitDeviceType;
+
+typedef struct
+{
+    float latitude;
+    float longitude;
+    String name;
+} WaypointCoordinatesType;
+
+/**
+ *
+ */
+typedef struct
+{
+    std::vector<WaypointCoordinatesType> waypoints;
+    int selectedWaypoint;
+} WaypointDataType;
+
+/**
+ *
+ */
+typedef enum
+{
+    GPS_MODE = 0,
+    WAYPOINT_MODE,
+    SYSTEM_MODE,
+    ERROR_MODE, // error mode is a mode cycle select bookend, add new cycle modes before here
+    SLEEP_PROMPT_MODE,
+    FLASHLIGHT_MODE,
+} DisplayModeType;
+
+typedef struct
+{
+    bool selectShortPress;
+    bool selectLongPress;
+
+    bool optionShortPress;
+    bool optionLongPress;
+
+    bool returnShortPress;
+    bool returnLongPress;
+
+    bool specialShortPress;
+    bool specialLongPress;
+} InputFlagsType;
+
+typedef struct
+{
+    bool lowBatteryModeEnable;
+    bool sleepModeEnable;
+
+    float batteryPercent;
+    float batteryVoltage;
+    float batteryChargeRate;
+    uint8_t alertStatus;
+} PowerDataType;
+
+typedef struct
+{
+    DisplayModeType displayMode;
+    DisplayModeType previousDisplayMode;
+    int displayRefreshCounter;
+} DisplayDataType;
 
 /**
  * @brief mini-gps data frame
  */
-typedef struct Data
+typedef struct
 {
-    bool connected;
-    bool wasConnected;
     bool validDate;
     uint8_t fixQuality;
     float dtLastFix;
@@ -47,7 +108,7 @@ typedef struct Data
     float altitude;
 
     float speed;
-    float angle;
+    float heading;
 
     int year;
     int month;
@@ -58,18 +119,38 @@ typedef struct Data
     int second;
     long timeout;
 
-    int numSats;
-} Data;
+    uint8_t numSats;
+} GpsDataType;
+
+/**
+ * @brief all data about satellites
+ */
+typedef struct
+{
+    bool active;
+    int elevation;
+    int azimuth;
+    int snr;
+} SatelliteDataType;
+
+typedef struct
+{
+    InputFlagsType inputFlags;
+    PowerDataType power;
+    DisplayDataType display;
+    WaypointDataType waypointData;
+    bool enableFlashlight;
+} SystemDataType;
 
 /**
  * @brief debugger structure
  */
-typedef struct Debugger
+typedef struct
 {
     // debug toggle
     bool debugEnabled;
     bool IO_debugEnabled;
-    bool i2c_debugEnabled;
+    bool gps_debugEnabled;
     bool display_debugEnabled;
     bool scheduler_debugEnable;
 
@@ -77,22 +158,20 @@ typedef struct Debugger
     String debugText;
 
     // scheduler data
-    unsigned long ioWriteTaskCount;
-    unsigned long ioReadTaskCount;
-    unsigned long i2cTaskCount;
+    unsigned long ioTaskCount;
+    unsigned long gpsTaskCount;
     unsigned long displayTaskCount;
 
     int displayRefreshRate;
 
-    unsigned long ioReadTaskPreviousCount;
-    unsigned long ioWriteTaskPreviousCount;
-    unsigned long i2cTaskPreviousCount;
+    unsigned long ioTaskPreviousCount;
+    unsigned long gpsTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
-} Debugger;
+} DebuggerType;
 
 // debug functions
 void PrintDebug();
-void PrintI2CDebug();
+void PrintGpsDebug();
 void PrintIODebug();
 void PrintDisplayDebug();
 void PrintSchedulerDebug();
