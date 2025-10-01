@@ -31,6 +31,9 @@ typedef struct
     bool gpsActive;
 } InitDeviceType;
 
+/**
+ * @brief all of the data associated with a waypoint
+ */
 typedef struct
 {
     float latitude;
@@ -39,7 +42,7 @@ typedef struct
 } WaypointCoordinatesType;
 
 /**
- *
+ * @brief general waypoint data
  */
 typedef struct
 {
@@ -48,7 +51,7 @@ typedef struct
 } WaypointDataType;
 
 /**
- *
+ * @brief the various full screen display modes
  */
 typedef enum
 {
@@ -60,6 +63,9 @@ typedef enum
     FLASHLIGHT_MODE,
 } DisplayModeType;
 
+/**
+ * @brief input flags for the user buttons
+ */
 typedef struct
 {
     bool selectShortPress;
@@ -75,6 +81,9 @@ typedef struct
     bool specialLongPress;
 } InputFlagsType;
 
+/**
+ * @brief all data associated with the power state of the device
+ */
 typedef struct
 {
     bool lowBatteryModeEnable;
@@ -86,15 +95,17 @@ typedef struct
     uint8_t alertStatus;
 } PowerDataType;
 
+/**
+ * @brief all data associated with the state of the display
+ */
 typedef struct
 {
     DisplayModeType displayMode;
     DisplayModeType previousDisplayMode;
-    int displayRefreshCounter;
 } DisplayDataType;
 
 /**
- * @brief mini-gps data frame
+ * @brief all gps data
  */
 typedef struct
 {
@@ -124,16 +135,8 @@ typedef struct
 } GpsDataType;
 
 /**
- * @brief all data about satellites
+ * @brief all data associated with the mini gps system state
  */
-typedef struct
-{
-    bool active;
-    int elevation;
-    int azimuth;
-    int snr;
-} SatelliteDataType;
-
 typedef struct
 {
     InputFlagsType inputFlags;
@@ -144,7 +147,7 @@ typedef struct
 } SystemDataType;
 
 /**
- * @brief debugger structure
+ * @brief debug data
  */
 typedef struct
 {
@@ -169,10 +172,3 @@ typedef struct
     unsigned long gpsTaskPreviousCount;
     unsigned long displayTaskPreviousCount;
 } DebuggerType;
-
-// debug functions
-void PrintDebug();
-void PrintGpsDebug();
-void PrintIODebug();
-void PrintDisplayDebug();
-void PrintSchedulerDebug();

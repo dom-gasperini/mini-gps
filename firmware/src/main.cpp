@@ -63,7 +63,7 @@
 
 // system
 #define FIRMWARE_MAJOR 6
-#define FIRMWARE_MINOR 3
+#define FIRMWARE_MINOR 4
 #define FIRMWARE_NAME "astronomer"
 
 // time keeping
@@ -136,7 +136,6 @@ SystemDataType g_systemData = {
     .display = {
         .displayMode = GPS_MODE,
         .previousDisplayMode = ERROR_MODE,
-        .displayRefreshCounter = 0,
     },
 
     .waypointData = {
@@ -277,6 +276,13 @@ void DisplayError(SystemDataType sd);
 void DisplayFlashlight(SystemDataType sd);
 void DisplaySleepPrompt(SystemDataType sd);
 void DrawCloud(int x, int y, int size, int color);
+
+// debug
+void PrintDebug();
+void PrintGpsDebug();
+void PrintIODebug();
+void PrintDisplayDebug();
+void PrintSchedulerDebug();
 
 /*
 ===============================================================================================
