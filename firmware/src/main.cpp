@@ -1,14 +1,14 @@
 /**
  * @file main.cpp
- * @author dom
+ * @author dom gasperini
  * @brief mini gps
  * @version 6
  * @date 2025-09-30
  *
  * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather docs)
- * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module docs)
- * @ref https://github.com/adafruit/Adafruit_GPS                              (gps library)
- * @ref https://github.com/adafruit/Adafruit-GFX-Library                      (graphics library)
+ * @ref https://learn.adafruit.com/adafruit-mini-gps-pa1010d-module/overview  (Adafruit Mini GPS PA1010D Module docs)
+ * @ref https://github.com/adafruit/Adafruit_GPS                              (gps library repo)
+ * @ref https://github.com/adafruit/Adafruit-GFX-Library                      (graphics library repo)
  */
 
 /*
@@ -19,9 +19,8 @@
 
 // core
 #include <Arduino.h>
-#include <SPI.h>
 #include <Wire.h>
-#include <Preferences.h>
+#include <Preferences.h> // nvs api
 #include <rtc.h>
 #include <vector>
 
@@ -63,7 +62,7 @@
 
 // system
 #define FIRMWARE_MAJOR 6
-#define FIRMWARE_MINOR 4
+#define FIRMWARE_BUILD 5
 #define FIRMWARE_NAME "astronomer"
 
 // time keeping
@@ -378,6 +377,8 @@ void setup()
     tmpName = wpStorage.getString(NVS_WP_5_NAME_KEY, " ");
     WaypointCoordinatesType wp5 = {tmpLat, tmpLong, tmpName};
 
+    g_wasSleeping = wpStorage.getBool(NVS_WAS_SLEEPING_KEY, false);
+
     wpStorage.end();
 
     // save to dynamic memory
@@ -423,6 +424,12 @@ void setup()
   displayModule.setCursor(55, 60);
   displayModule.printf("[> booting mini gps <]");
   delay(1000);
+
+  // b.i.t.
+  if (g_wasSleeping)
+  {
+    Serial.printf("\tstarting b.i.t.\n"); // TODO: add built in display test
+  }
 
   setup.displayActive = true;
   Serial.printf("display init [ success ]\n");
@@ -618,6 +625,7 @@ void IoTask(void *pvParameters)
       gpio_hold_en((gpio_num_t)GPS_WAKE_PIN);
       digitalWrite(TFT_I2C_POWER, LOW);
       batteryModule.sleep(true);
+      // TODO: update nvs sleep data
 
       esp_deep_sleep_start();
     }
@@ -1368,7 +1376,7 @@ void DisplaySystem(SystemDataType sd)
   displayModule.setTextColor(ST77XX_MAGENTA, ST77XX_BLACK);
   displayModule.setTextSize(1);
   displayModule.setCursor(0, 120);
-  displayModule.printf("firmware: %d.%d \"%s\"", FIRMWARE_MAJOR, FIRMWARE_MINOR, FIRMWARE_NAME);
+  displayModule.printf("firmware: %d.%d \"%s\"", FIRMWARE_MAJOR, FIRMWARE_BUILD, FIRMWARE_NAME);
 
   // display refresh rate
   g_refreshRateCounter++;
