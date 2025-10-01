@@ -38,4 +38,4 @@ esp_pm_config_esp32s3_t power_configuration{
 #define RETURN_BUTTON 2 // bottom | pulled down
 
 // gps
-// #define GPS_ENABLE_PIN A4 // enable pin specific to the gps module hardware | HIGH = on | LOW = off
+#define GPS_ENABLE_PIN A4 // enable pin specific to the gps module hardware | HIGH = on | LOW = off
