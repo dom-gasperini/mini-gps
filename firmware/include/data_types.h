@@ -1,7 +1,7 @@
 /**
  * @file data_types.h
  * @author dom gasperini
- * @brief mini-gps
+ * @brief defines all of the custom data types used throughout mini gps firmware
  * @version 6
  * @date 2025-09-30
  */
@@ -12,6 +12,7 @@
 ========================================================
 */
 
+#include <Arduino.h>
 #include <vector>
 
 /*

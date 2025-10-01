@@ -1,7 +1,7 @@
 /**
  * @file pin_config.h
  * @author dom gasperini
- * @brief mini-gps
+ * @brief contains the pin definitions for mini gps
  * @version 6
  * @date 2025-09-30
  */
@@ -20,10 +20,13 @@
 ===========================================================
 */
 
+/**
+ * @brief define the cpu clock speed profile and light sleep capabilites
+ */
 esp_pm_config_esp32s3_t power_configuration{
     .max_freq_mhz = 240,
     .min_freq_mhz = 240,
-    .light_sleep_enable = true,
+    .light_sleep_enable = false,
 };
 
 /*
@@ -38,4 +41,4 @@ esp_pm_config_esp32s3_t power_configuration{
 #define RETURN_BUTTON 2 // bottom | pulled down
 
 // gps
-#define GPS_ENABLE_PIN A4 // enable pin specific to the gps module hardware | HIGH = on | LOW = off
+#define GPS_WAKE_PIN A4 // enable pin specific to the gps module hardware | HIGH = on | LOW = off
