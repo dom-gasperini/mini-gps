@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom
  * @brief mini gps
- * @version 5
- * @date 2025-09-29
+ * @version 6
+ * @date 2025-09-30
  *
  * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather docs)
  * @ref https://learn.adafruit.com/adafruit-ultimate-gps/overview             (Adafruit Ulitmate GPS Module docs)
@@ -62,9 +62,9 @@
 #define NUM_DATA_READS 900 // read available data on the serial bus with this limit
 
 // system
-#define FIRMWARE_MAJOR 5
-#define FIRMWARE_MINOR 357
-#define FIRMWARE_NAME "stargazer"
+#define FIRMWARE_MAJOR 6
+#define FIRMWARE_MINOR 1
+#define FIRMWARE_NAME "constellation"
 
 // time keeping
 #define REFRESH_WAYPOINT_VECTOR_DELAY 5000           // in milliseconds
