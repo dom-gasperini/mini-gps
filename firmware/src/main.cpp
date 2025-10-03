@@ -58,7 +58,8 @@
 // comms
 #define BATT_MGMT_I2C_ADDR 0x36
 #define GPS_I2C_ADDR 0x10
-#define PTMK_BACKUP_POWER "$PMTK225,4*2F" // command the module to enter backup power mode and maintain date/time/d-fix via coin cell (consumes 15uA from battery)
+#define PTMK_STANDBY_MODE "$PMTK161,0*28" // enter standby mode
+#define PTMK_BACKUP_MODE "$PMTK225,4*2F"  // command the module to enter backup power mode and maintain date/time/d-fix via coin cell (consumes 15uA from battery)
 
 // system
 #define FIRMWARE_MAJOR 6
@@ -177,7 +178,7 @@ DebuggerType g_debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .gps_debugEnabled = false,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = true,
+    .scheduler_debugEnable = false,
 
     .debugText = "",
 
@@ -260,6 +261,7 @@ float DegreesToRadians(float degrees);
 float RadiansToDegrees(float radians);
 String TaskStateToString(eTaskState state);
 std::pair<uint16_t, uint16_t> FixStatusColorManager(int fixQuality, bool validDate);
+void ExecBIT();
 void FlashNVS();
 
 // task abstractions
@@ -378,8 +380,9 @@ void setup()
     WaypointCoordinatesType wp5 = {tmpLat, tmpLong, tmpName};
 
     g_wasSleeping = wpStorage.getBool(NVS_WAS_SLEEPING_KEY, false);
+    wpStorage.putBool(NVS_WAS_SLEEPING_KEY, false);
 
-    wpStorage.end();
+    // wpStorage.end();
 
     // save to dynamic memory
     g_systemData.waypointData.waypoints.push_back(wp1);
@@ -426,9 +429,10 @@ void setup()
   delay(1000);
 
   // b.i.t.
-  if (g_wasSleeping)
+  if (!g_wasSleeping)
   {
     Serial.printf("\tstarting b.i.t.\n"); // TODO: add built in display test
+    ExecBIT();
   }
 
   setup.displayActive = true;
@@ -438,7 +442,7 @@ void setup()
   // -------------------------- initialize gps -------------------------------- //
   if (gpsModule.begin(GPS_I2C_ADDR))
   {
-    gpsModule.wakeup();
+    gpsModule.sendCommand(""); // wake from standby mode by sending a byte
 
     // set data filter
     gpsModule.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGAGSA);
@@ -620,12 +624,13 @@ void IoTask(void *pvParameters)
     if (g_systemData.power.sleepModeEnable)
     {
       // turn off display and gps module power
-      gpsModule.sendCommand(PTMK_BACKUP_POWER); // backup power command, set module
+      // gpsModule.sendCommand(PTMK_BACKUP_MODE); // backup power command, set module
+      gpsModule.sendCommand(PTMK_STANDBY_MODE); // can be awoken from software
       digitalWrite(GPS_WAKE_PIN, LOW);
       gpio_hold_en((gpio_num_t)GPS_WAKE_PIN);
       digitalWrite(TFT_I2C_POWER, LOW);
       batteryModule.sleep(true);
-      // TODO: update nvs sleep data
+      wpStorage.putBool(NVS_WAS_SLEEPING_KEY, true);
 
       esp_deep_sleep_start();
     }
@@ -1099,7 +1104,7 @@ void DisplayGpsData(GpsDataType gps)
     displayModule.setCursor(130, 30);
     displayModule.printf("%.5f", gps.longitude);
 
-    displayModule.setCursor(90, 55);
+    displayModule.setCursor(70, 55);
     displayModule.printf("%4.1f ft ", gps.altitude);
   }
   else
@@ -1704,6 +1709,72 @@ std::pair<uint16_t, uint16_t> FixStatusColorManager(int fixQuality, bool validDa
   colors.first = textColor;
   colors.second = backgroundColor;
   return colors;
+}
+
+void testfillrects(uint16_t color1, uint16_t color2)
+{
+  displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = displayModule.width() - 1; x > 6; x -= 6)
+  {
+    displayModule.fillRect(displayModule.width() / 2 - x / 2, displayModule.height() / 2 - x / 2, x, x,
+                           color1);
+    displayModule.drawRect(displayModule.width() / 2 - x / 2, displayModule.height() / 2 - x / 2, x, x,
+                           color2);
+  }
+}
+
+void testdrawcircles(uint8_t radius, uint16_t color)
+{
+  displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = 0; x < displayModule.width() + radius; x += radius * 2)
+  {
+    for (int16_t y = 0; y < displayModule.height() + radius; y += radius * 2)
+    {
+      displayModule.drawCircle(x, y, radius, color);
+      delay(5);
+    }
+  }
+}
+
+void testroundrects()
+{
+  displayModule.fillScreen(ST77XX_BLACK);
+  uint16_t color = 100;
+  int i;
+  int t;
+  for (t = 0; t <= 4; t += 1)
+  {
+    int x = 0;
+    int y = 0;
+    int w = displayModule.width() - 2;
+    int h = displayModule.height() - 2;
+    for (i = 0; i <= 16; i += 1)
+    {
+      displayModule.drawRoundRect(x, y, w, h, 5, color);
+      x += 2;
+      y += 3;
+      w -= 4;
+      h -= 6;
+      color += 1100;
+      delay(5);
+    }
+    color += 100;
+  }
+}
+
+/**
+ * @brief run built in test on display
+ */
+void ExecBIT()
+{
+  testfillrects(ST77XX_RED, ST77XX_WHITE);
+  delay(100);
+
+  testdrawcircles(10, ST77XX_WHITE);
+  delay(100);
+
+  testroundrects();
+  delay(100);
 }
 
 /**
