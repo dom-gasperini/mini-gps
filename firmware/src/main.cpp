@@ -3,7 +3,7 @@
  * @author dom gasperini
  * @brief mini gps
  * @version 6
- * @date 2025-09-30
+ * @date 2025-10-03
  *
  * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather docs)
  * @ref https://learn.adafruit.com/adafruit-mini-gps-pa1010d-module/overview  (Adafruit Mini GPS PA1010D Module docs)
@@ -63,7 +63,7 @@
 
 // system
 #define FIRMWARE_MAJOR 6
-#define FIRMWARE_BUILD 5
+#define FIRMWARE_BUILD 7
 #define FIRMWARE_NAME "astronomer"
 
 // time keeping
@@ -316,13 +316,12 @@ void setup()
 
   // --------------------------- initialize IO ------------------------------- //
   // power
-  pinMode(TFT_I2C_POWER, OUTPUT);    // turn on power to the gps module
-  digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display
+  pinMode(TFT_I2C_POWER, OUTPUT);
+  digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display and gps module
 
   // gps
-  pinMode(GPS_WAKE_PIN, OUTPUT);           // if the module was in backup mode, this is the only way to wake it
-  gpio_hold_dis((gpio_num_t)GPS_WAKE_PIN); // when coming out of deep sleep, the hold needs to be disabled
-  digitalWrite(GPS_WAKE_PIN, HIGH);        // wake device
+  // pinMode(GPS_WAKE_PIN, OUTPUT);
+  // digitalWrite(GPS_WAKE_PIN, HIGH); // wake module from backup mode
 
   // tft
   pinMode(TFT_BACKLITE, OUTPUT);
@@ -624,10 +623,9 @@ void IoTask(void *pvParameters)
     if (g_systemData.power.sleepModeEnable)
     {
       // turn off display and gps module power
-      // gpsModule.sendCommand(PTMK_BACKUP_MODE); // backup power command, set module
+      // digitalWrite(GPS_WAKE_PIN, LOW);
+      // gpsModule.sendCommand(PTMK_BACKUP_MODE); // backup power command, cannot be awkoen via softare
       gpsModule.sendCommand(PTMK_STANDBY_MODE); // can be awoken from software
-      digitalWrite(GPS_WAKE_PIN, LOW);
-      gpio_hold_en((gpio_num_t)GPS_WAKE_PIN);
       digitalWrite(TFT_I2C_POWER, LOW);
       batteryModule.sleep(true);
       wpStorage.putBool(NVS_WAS_SLEEPING_KEY, true);
@@ -1485,7 +1483,7 @@ void DisplayStatusBar(SystemDataType sd, GpsDataType gps)
   displayModule.printf("%s%% ", buffer.c_str());
 
   // draw battery symbol
-  if (sd.power.batteryChargeRate >= 0)
+  if (sd.power.batteryChargeRate > 0.0f)
   {
     // do time keeping
     unsigned long now = millis();
