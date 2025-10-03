@@ -63,7 +63,7 @@
 
 // system
 #define FIRMWARE_MAJOR 6
-#define FIRMWARE_BUILD 7
+#define FIRMWARE_BUILD 8
 #define FIRMWARE_NAME "astronomer"
 
 // time keeping
@@ -381,8 +381,6 @@ void setup()
     g_wasSleeping = wpStorage.getBool(NVS_WAS_SLEEPING_KEY, false);
     wpStorage.putBool(NVS_WAS_SLEEPING_KEY, false);
 
-    // wpStorage.end();
-
     // save to dynamic memory
     g_systemData.waypointData.waypoints.push_back(wp1);
     g_systemData.waypointData.waypoints.push_back(wp2);
@@ -629,6 +627,7 @@ void IoTask(void *pvParameters)
       digitalWrite(TFT_I2C_POWER, LOW);
       batteryModule.sleep(true);
       wpStorage.putBool(NVS_WAS_SLEEPING_KEY, true);
+      wpStorage.end();
 
       esp_deep_sleep_start();
     }
