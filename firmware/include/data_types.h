@@ -3,7 +3,7 @@
  * @author dom gasperini
  * @brief defines all of the custom data types used throughout mini gps firmware
  * @version 6
- * @date 2025-09-30
+ * @date 2025-10-03
  */
 
 /*
@@ -132,6 +132,7 @@ typedef struct
     long timeout;
 
     uint8_t numSats;
+    float refreshRate;
 } GpsDataType;
 
 /**
@@ -143,6 +144,7 @@ typedef struct
     PowerDataType power;
     DisplayDataType display;
     WaypointDataType waypointData;
+    bool enableDebug;
     bool enableFlashlight;
 } SystemDataType;
 
