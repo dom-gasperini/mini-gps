@@ -4,18 +4,12 @@ a gps location device
 
 ## details
 
-- 1 meters precision
-- 1Hz fix update rate
-- LiPo battery (12 hours screen on, 5 day standby)
-- waypoint system
+- 1 meter precision
+- 10Hz gps fix rate
+- 400 mAh LiPo battery (10 hours screen on | 1 year standby)
+- waypoint navigation system
 
 ## hardware
 
 - Adafruit ESP32-S3 Reverse TFT Feather
-- Adafruit GPS Module (MTK33x9 Chipset)
-
-## software
-
-- FreeRTOS
-- Adafruit GFX Library
-- Adafruit GPS Library
+- Adafruit GPS Module (PA1010D Chipset)
