@@ -6,7 +6,7 @@ a gps location device
 
 - 1 meter precision
 - 10Hz gps fix rate
-- 400 mAh LiPo battery (10 hours screen on | 1 year standby)
+- 400 mAh LiPo battery (10 hours screen on | 1.5 year standby)
 - waypoint navigation system
 
 ## hardware
