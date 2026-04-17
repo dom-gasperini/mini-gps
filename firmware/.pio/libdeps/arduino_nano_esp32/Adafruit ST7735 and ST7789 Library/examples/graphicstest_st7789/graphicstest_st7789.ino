@@ -56,7 +56,7 @@
 // SCLK = pin 13. This is the fastest mode of operation and is required if
 // using the breakout board's microSD card.
 
-Adafruit_ST7789 displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+Adafruit_ST7789 g_displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 // OPTION 2 lets you interface the display using ANY TWO or THREE PINS,
 // tradeoff being that performance is not as fast as hardware SPI above.
@@ -73,7 +73,7 @@ void setup(void)
   Serial.print(F("Hello! ST77xx TFT Test"));
 
   // Use this initializer (uncomment) if using a 1.3" or 1.54" 240x240 TFT:
-  displayModule.init(240, 240); // Init ST7789 240x240
+  g_displayModule.init(240, 240); // Init ST7789 240x240
 
   // OR use this initializer (uncomment) if using a 1.69" 280x240 TFT:
   // tft.init(240, 280);           // Init ST7789 280x240
@@ -97,14 +97,14 @@ void setup(void)
   Serial.println(F("Initialized"));
 
   uint16_t time = millis();
-  displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.fillScreen(ST77XX_BLACK);
   time = millis() - time;
 
   Serial.println(time, DEC);
   delay(500);
 
   // large block of text
-  displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.fillScreen(ST77XX_BLACK);
   testdrawtext("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur adipiscing ante sed nibh tincidunt feugiat. Maecenas enim massa, fringilla sed malesuada et, malesuada sit amet turpis. Sed porttitor neque ut ante pretium vitae malesuada nunc bibendum. Nullam aliquet ultrices massa eu hendrerit. Ut sed nisi lorem. In vestibulum purus a tortor imperdiet posuere. ", ST77XX_WHITE);
   delay(1000);
 
@@ -113,7 +113,7 @@ void setup(void)
   delay(4000);
 
   // a single pixel
-  displayModule.drawPixel(displayModule.width() / 2, displayModule.height() / 2, ST77XX_GREEN);
+  g_displayModule.drawPixel(g_displayModule.width() / 2, g_displayModule.height() / 2, ST77XX_GREEN);
   delay(500);
 
   // line draw test
@@ -130,7 +130,7 @@ void setup(void)
   testfillrects(ST77XX_YELLOW, ST77XX_MAGENTA);
   delay(500);
 
-  displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.fillScreen(ST77XX_BLACK);
   testfillcircles(10, ST77XX_BLUE);
   testdrawcircles(10, ST77XX_WHITE);
   delay(500);
@@ -150,137 +150,137 @@ void setup(void)
 
 void loop()
 {
-  displayModule.invertDisplay(true);
+  g_displayModule.invertDisplay(true);
   delay(500);
-  displayModule.invertDisplay(false);
+  g_displayModule.invertDisplay(false);
   delay(500);
 }
 
 void testlines(uint16_t color)
 {
-  displayModule.fillScreen(ST77XX_BLACK);
-  for (int16_t x = 0; x < displayModule.width(); x += 6)
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = 0; x < g_displayModule.width(); x += 6)
   {
-    displayModule.drawLine(0, 0, x, displayModule.height() - 1, color);
+    g_displayModule.drawLine(0, 0, x, g_displayModule.height() - 1, color);
     delay(0);
   }
-  for (int16_t y = 0; y < displayModule.height(); y += 6)
+  for (int16_t y = 0; y < g_displayModule.height(); y += 6)
   {
-    displayModule.drawLine(0, 0, displayModule.width() - 1, y, color);
-    delay(0);
-  }
-
-  displayModule.fillScreen(ST77XX_BLACK);
-  for (int16_t x = 0; x < displayModule.width(); x += 6)
-  {
-    displayModule.drawLine(displayModule.width() - 1, 0, x, displayModule.height() - 1, color);
-    delay(0);
-  }
-  for (int16_t y = 0; y < displayModule.height(); y += 6)
-  {
-    displayModule.drawLine(displayModule.width() - 1, 0, 0, y, color);
+    g_displayModule.drawLine(0, 0, g_displayModule.width() - 1, y, color);
     delay(0);
   }
 
-  displayModule.fillScreen(ST77XX_BLACK);
-  for (int16_t x = 0; x < displayModule.width(); x += 6)
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = 0; x < g_displayModule.width(); x += 6)
   {
-    displayModule.drawLine(0, displayModule.height() - 1, x, 0, color);
+    g_displayModule.drawLine(g_displayModule.width() - 1, 0, x, g_displayModule.height() - 1, color);
     delay(0);
   }
-  for (int16_t y = 0; y < displayModule.height(); y += 6)
+  for (int16_t y = 0; y < g_displayModule.height(); y += 6)
   {
-    displayModule.drawLine(0, displayModule.height() - 1, displayModule.width() - 1, y, color);
+    g_displayModule.drawLine(g_displayModule.width() - 1, 0, 0, y, color);
     delay(0);
   }
 
-  displayModule.fillScreen(ST77XX_BLACK);
-  for (int16_t x = 0; x < displayModule.width(); x += 6)
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = 0; x < g_displayModule.width(); x += 6)
   {
-    displayModule.drawLine(displayModule.width() - 1, displayModule.height() - 1, x, 0, color);
+    g_displayModule.drawLine(0, g_displayModule.height() - 1, x, 0, color);
     delay(0);
   }
-  for (int16_t y = 0; y < displayModule.height(); y += 6)
+  for (int16_t y = 0; y < g_displayModule.height(); y += 6)
   {
-    displayModule.drawLine(displayModule.width() - 1, displayModule.height() - 1, 0, y, color);
+    g_displayModule.drawLine(0, g_displayModule.height() - 1, g_displayModule.width() - 1, y, color);
+    delay(0);
+  }
+
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = 0; x < g_displayModule.width(); x += 6)
+  {
+    g_displayModule.drawLine(g_displayModule.width() - 1, g_displayModule.height() - 1, x, 0, color);
+    delay(0);
+  }
+  for (int16_t y = 0; y < g_displayModule.height(); y += 6)
+  {
+    g_displayModule.drawLine(g_displayModule.width() - 1, g_displayModule.height() - 1, 0, y, color);
     delay(0);
   }
 }
 
 void testdrawtext(char *text, uint16_t color)
 {
-  displayModule.setCursor(0, 0);
-  displayModule.setTextColor(color);
-  displayModule.setTextWrap(true);
-  displayModule.print(text);
+  g_displayModule.setCursor(0, 0);
+  g_displayModule.setTextColor(color);
+  g_displayModule.setTextWrap(true);
+  g_displayModule.print(text);
 }
 
 void testfastlines(uint16_t color1, uint16_t color2)
 {
-  displayModule.fillScreen(ST77XX_BLACK);
-  for (int16_t y = 0; y < displayModule.height(); y += 5)
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t y = 0; y < g_displayModule.height(); y += 5)
   {
-    displayModule.drawFastHLine(0, y, displayModule.width(), color1);
+    g_displayModule.drawFastHLine(0, y, g_displayModule.width(), color1);
   }
-  for (int16_t x = 0; x < displayModule.width(); x += 5)
+  for (int16_t x = 0; x < g_displayModule.width(); x += 5)
   {
-    displayModule.drawFastVLine(x, 0, displayModule.height(), color2);
+    g_displayModule.drawFastVLine(x, 0, g_displayModule.height(), color2);
   }
 }
 
 void testdrawrects(uint16_t color)
 {
-  displayModule.fillScreen(ST77XX_BLACK);
-  for (int16_t x = 0; x < displayModule.width(); x += 6)
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = 0; x < g_displayModule.width(); x += 6)
   {
-    displayModule.drawRect(displayModule.width() / 2 - x / 2, displayModule.height() / 2 - x / 2, x, x, color);
+    g_displayModule.drawRect(g_displayModule.width() / 2 - x / 2, g_displayModule.height() / 2 - x / 2, x, x, color);
   }
 }
 
 void testfillrects(uint16_t color1, uint16_t color2)
 {
-  displayModule.fillScreen(ST77XX_BLACK);
-  for (int16_t x = displayModule.width() - 1; x > 6; x -= 6)
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  for (int16_t x = g_displayModule.width() - 1; x > 6; x -= 6)
   {
-    displayModule.fillRect(displayModule.width() / 2 - x / 2, displayModule.height() / 2 - x / 2, x, x, color1);
-    displayModule.drawRect(displayModule.width() / 2 - x / 2, displayModule.height() / 2 - x / 2, x, x, color2);
+    g_displayModule.fillRect(g_displayModule.width() / 2 - x / 2, g_displayModule.height() / 2 - x / 2, x, x, color1);
+    g_displayModule.drawRect(g_displayModule.width() / 2 - x / 2, g_displayModule.height() / 2 - x / 2, x, x, color2);
   }
 }
 
 void testfillcircles(uint8_t radius, uint16_t color)
 {
-  for (int16_t x = radius; x < displayModule.width(); x += radius * 2)
+  for (int16_t x = radius; x < g_displayModule.width(); x += radius * 2)
   {
-    for (int16_t y = radius; y < displayModule.height(); y += radius * 2)
+    for (int16_t y = radius; y < g_displayModule.height(); y += radius * 2)
     {
-      displayModule.fillCircle(x, y, radius, color);
+      g_displayModule.fillCircle(x, y, radius, color);
     }
   }
 }
 
 void testdrawcircles(uint8_t radius, uint16_t color)
 {
-  for (int16_t x = 0; x < displayModule.width() + radius; x += radius * 2)
+  for (int16_t x = 0; x < g_displayModule.width() + radius; x += radius * 2)
   {
-    for (int16_t y = 0; y < displayModule.height() + radius; y += radius * 2)
+    for (int16_t y = 0; y < g_displayModule.height() + radius; y += radius * 2)
     {
-      displayModule.drawCircle(x, y, radius, color);
+      g_displayModule.drawCircle(x, y, radius, color);
     }
   }
 }
 
 void testtriangles()
 {
-  displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.fillScreen(ST77XX_BLACK);
   uint16_t color = 0xF800;
   int t;
-  int w = displayModule.width() / 2;
-  int x = displayModule.height() - 1;
+  int w = g_displayModule.width() / 2;
+  int x = g_displayModule.height() - 1;
   int y = 0;
-  int z = displayModule.width();
+  int z = g_displayModule.width();
   for (t = 0; t <= 15; t++)
   {
-    displayModule.drawTriangle(w, y, y, x, z, x, color);
+    g_displayModule.drawTriangle(w, y, y, x, z, x, color);
     x -= 4;
     y += 4;
     z -= 4;
@@ -290,7 +290,7 @@ void testtriangles()
 
 void testroundrects()
 {
-  displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.fillScreen(ST77XX_BLACK);
   uint16_t color = 100;
   int i;
   int t;
@@ -298,11 +298,11 @@ void testroundrects()
   {
     int x = 0;
     int y = 0;
-    int w = displayModule.width() - 2;
-    int h = displayModule.height() - 2;
+    int w = g_displayModule.width() - 2;
+    int h = g_displayModule.height() - 2;
     for (i = 0; i <= 16; i += 1)
     {
-      displayModule.drawRoundRect(x, y, w, h, 5, color);
+      g_displayModule.drawRoundRect(x, y, w, h, 5, color);
       x += 2;
       y += 3;
       w -= 4;
@@ -315,62 +315,62 @@ void testroundrects()
 
 void tftPrintTest()
 {
-  displayModule.setTextWrap(false);
-  displayModule.fillScreen(ST77XX_BLACK);
-  displayModule.setCursor(0, 30);
-  displayModule.setTextColor(ST77XX_RED);
-  displayModule.setTextSize(1);
-  displayModule.println("Hello World!");
-  displayModule.setTextColor(ST77XX_YELLOW);
-  displayModule.setTextSize(2);
-  displayModule.println("Hello World!");
-  displayModule.setTextColor(ST77XX_GREEN);
-  displayModule.setTextSize(3);
-  displayModule.println("Hello World!");
-  displayModule.setTextColor(ST77XX_BLUE);
-  displayModule.setTextSize(4);
-  displayModule.print(1234.567);
+  g_displayModule.setTextWrap(false);
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.setCursor(0, 30);
+  g_displayModule.setTextColor(ST77XX_RED);
+  g_displayModule.setTextSize(1);
+  g_displayModule.println("Hello World!");
+  g_displayModule.setTextColor(ST77XX_YELLOW);
+  g_displayModule.setTextSize(2);
+  g_displayModule.println("Hello World!");
+  g_displayModule.setTextColor(ST77XX_GREEN);
+  g_displayModule.setTextSize(3);
+  g_displayModule.println("Hello World!");
+  g_displayModule.setTextColor(ST77XX_BLUE);
+  g_displayModule.setTextSize(4);
+  g_displayModule.print(1234.567);
   delay(1500);
-  displayModule.setCursor(0, 0);
-  displayModule.fillScreen(ST77XX_BLACK);
-  displayModule.setTextColor(ST77XX_WHITE);
-  displayModule.setTextSize(0);
-  displayModule.println("Hello World!");
-  displayModule.setTextSize(1);
-  displayModule.setTextColor(ST77XX_GREEN);
-  displayModule.print(p, 6);
-  displayModule.println(" Want pi?");
-  displayModule.println(" ");
-  displayModule.print(8675309, HEX); // print 8,675,309 out in HEX!
-  displayModule.println(" Print HEX!");
-  displayModule.println(" ");
-  displayModule.setTextColor(ST77XX_WHITE);
-  displayModule.println("Sketch has been");
-  displayModule.println("running for: ");
-  displayModule.setTextColor(ST77XX_MAGENTA);
-  displayModule.print(millis() / 1000);
-  displayModule.setTextColor(ST77XX_WHITE);
-  displayModule.print(" seconds.");
+  g_displayModule.setCursor(0, 0);
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.setTextColor(ST77XX_WHITE);
+  g_displayModule.setTextSize(0);
+  g_displayModule.println("Hello World!");
+  g_displayModule.setTextSize(1);
+  g_displayModule.setTextColor(ST77XX_GREEN);
+  g_displayModule.print(p, 6);
+  g_displayModule.println(" Want pi?");
+  g_displayModule.println(" ");
+  g_displayModule.print(8675309, HEX); // print 8,675,309 out in HEX!
+  g_displayModule.println(" Print HEX!");
+  g_displayModule.println(" ");
+  g_displayModule.setTextColor(ST77XX_WHITE);
+  g_displayModule.println("Sketch has been");
+  g_displayModule.println("running for: ");
+  g_displayModule.setTextColor(ST77XX_MAGENTA);
+  g_displayModule.print(millis() / 1000);
+  g_displayModule.setTextColor(ST77XX_WHITE);
+  g_displayModule.print(" seconds.");
 }
 
 void mediabuttons()
 {
   // play
-  displayModule.fillScreen(ST77XX_BLACK);
-  displayModule.fillRoundRect(25, 10, 78, 60, 8, ST77XX_WHITE);
-  displayModule.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_RED);
+  g_displayModule.fillScreen(ST77XX_BLACK);
+  g_displayModule.fillRoundRect(25, 10, 78, 60, 8, ST77XX_WHITE);
+  g_displayModule.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_RED);
   delay(500);
   // pause
-  displayModule.fillRoundRect(25, 90, 78, 60, 8, ST77XX_WHITE);
-  displayModule.fillRoundRect(39, 98, 20, 45, 5, ST77XX_GREEN);
-  displayModule.fillRoundRect(69, 98, 20, 45, 5, ST77XX_GREEN);
+  g_displayModule.fillRoundRect(25, 90, 78, 60, 8, ST77XX_WHITE);
+  g_displayModule.fillRoundRect(39, 98, 20, 45, 5, ST77XX_GREEN);
+  g_displayModule.fillRoundRect(69, 98, 20, 45, 5, ST77XX_GREEN);
   delay(500);
   // play color
-  displayModule.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_BLUE);
+  g_displayModule.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_BLUE);
   delay(50);
   // pause color
-  displayModule.fillRoundRect(39, 98, 20, 45, 5, ST77XX_RED);
-  displayModule.fillRoundRect(69, 98, 20, 45, 5, ST77XX_RED);
+  g_displayModule.fillRoundRect(39, 98, 20, 45, 5, ST77XX_RED);
+  g_displayModule.fillRoundRect(69, 98, 20, 45, 5, ST77XX_RED);
   // play color
-  displayModule.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_GREEN);
+  g_displayModule.fillTriangle(42, 20, 42, 60, 90, 40, ST77XX_GREEN);
 }

@@ -31,122 +31,90 @@ typedef struct
     bool gpsActive;
 } InitDeviceType;
 
-/**
- * @brief all of the data associated with a waypoint
- */
-typedef struct
-{
-    float latitude;
-    float longitude;
-    String name;
-} WaypointCoordinatesType;
+// /**
+//  * @brief input flags for the user buttons
+//  */
+// typedef struct
+// {
+//     bool selectShortPress;
+//     bool selectLongPress;
 
-/**
- * @brief general waypoint data
- */
-typedef struct
-{
-    std::vector<WaypointCoordinatesType> waypoints;
-    int selectedWaypoint;
-} WaypointDataType;
+//     bool optionShortPress;
+//     bool optionLongPress;
 
-/**
- * @brief the various full screen display modes
- */
-typedef enum
-{
-    GPS_MODE = 0,
-    WAYPOINT_MODE,
-    SYSTEM_MODE,
-    ERROR_MODE, // error mode is a mode cycle select bookend, add new cycle modes before here
-    SLEEP_PROMPT_MODE,
-    FLASHLIGHT_MODE,
-} DisplayModeType;
+//     bool returnShortPress;
+//     bool returnLongPress;
 
-/**
- * @brief input flags for the user buttons
- */
-typedef struct
-{
-    bool selectShortPress;
-    bool selectLongPress;
+//     bool specialShortPress;
+//     bool specialLongPress;
+// } InputFlagsType;
 
-    bool optionShortPress;
-    bool optionLongPress;
+// /**
+//  * @brief all data associated with the power state of the device
+//  */
+// typedef struct
+// {
+//     bool lowBatteryModeEnable;
+//     bool sleepModeEnable;
 
-    bool returnShortPress;
-    bool returnLongPress;
+//     float batteryPercent;
+//     float batteryVoltage;
+//     float batteryChargeRate;
+//     uint8_t alertStatus;
+// } PowerDataType;
 
-    bool specialShortPress;
-    bool specialLongPress;
-} InputFlagsType;
+// /**
+//  * @brief all data associated with the state of the display
+//  */
+// typedef struct
+// {
+//     DisplayModeType displayMode;
+//     DisplayModeType previousDisplayMode;
+// } DisplayDataType;
 
-/**
- * @brief all data associated with the power state of the device
- */
-typedef struct
-{
-    bool lowBatteryModeEnable;
-    bool sleepModeEnable;
+// /**
+//  * @brief all gps data
+//  */
+// typedef struct
+// {
+//     bool validDate;
+//     uint8_t fixQuality;
+//     float dtLastFix;
+//     float dtSinceDate;
+//     float dtSinceTime;
 
-    float batteryPercent;
-    float batteryVoltage;
-    float batteryChargeRate;
-    uint8_t alertStatus;
-} PowerDataType;
+//     float latitude;
+//     float longitude;
+//     float altitude;
 
-/**
- * @brief all data associated with the state of the display
- */
-typedef struct
-{
-    DisplayModeType displayMode;
-    DisplayModeType previousDisplayMode;
-} DisplayDataType;
+//     float speed;
+//     float heading;
 
-/**
- * @brief all gps data
- */
-typedef struct
-{
-    bool validDate;
-    uint8_t fixQuality;
-    float dtLastFix;
-    float dtSinceDate;
-    float dtSinceTime;
+//     int year;
+//     int month;
+//     int day;
 
-    float latitude;
-    float longitude;
-    float altitude;
+//     int hour;
+//     int minute;
+//     int second;
+//     long timeout;
 
-    float speed;
-    float heading;
+//     uint8_t numSats;
+//     float refreshRate;
+// } GpsDataType;
 
-    int year;
-    int month;
-    int day;
-
-    int hour;
-    int minute;
-    int second;
-    long timeout;
-
-    uint8_t numSats;
-    float refreshRate;
-} GpsDataType;
-
-/**
- * @brief all data associated with the mini gps system state
- */
-typedef struct
-{
-    InputFlagsType inputFlags;
-    PowerDataType power;
-    DisplayDataType display;
-    WaypointDataType waypointData;
-    bool enableDebug;
-    bool enableFlashlight;
-} SystemDataType;
+// /**
+//  * @brief all data associated with the mini gps system state
+//  */
+// typedef struct
+// {
+//     InputFlagsType inputFlags;
+//     PowerDataType power;
+//     DisplayDataType display;
+//     WaypointDataType waypointData;
+//     bool enableDebug;
+//     bool enableFlashlight;
+// } SystemDataType;
 
 /**
  * @brief debug data

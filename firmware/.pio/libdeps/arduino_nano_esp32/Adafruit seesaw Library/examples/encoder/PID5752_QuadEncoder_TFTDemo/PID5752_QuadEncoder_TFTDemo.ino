@@ -11,7 +11,7 @@
 #include <Fonts/FreeSans12pt7b.h>
 // we hvae loooots of PSRAM so lets use a GFX canvas for flicker-free graphics!
 GFXcanvas16 canvas(240, 135);
-Adafruit_ST7789 displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+Adafruit_ST7789 g_displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 #define SS_NEO_PIN 18
 #define SS_ENC0_SWITCH 12
@@ -78,9 +78,9 @@ void setup()
   pixels.setBrightness(255);
   pixels.show(); // Initialize all pixels to 'off'
 
-  displayModule.init(135, 240); // Init ST7789 240x135
-  displayModule.setRotation(3);
-  displayModule.fillScreen(ST77XX_BLUE);
+  g_displayModule.init(135, 240); // Init ST7789 240x135
+  g_displayModule.setRotation(3);
+  g_displayModule.fillScreen(ST77XX_BLUE);
   digitalWrite(TFT_BACKLITE, HIGH);
 
   canvas.setFont(&FreeSans12pt7b);
@@ -134,7 +134,7 @@ void loop()
 
   if (changed)
   {
-    displayModule.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
+    g_displayModule.drawRGBBitmap(0, 0, canvas.getBuffer(), 240, 135);
   }
 }
 
