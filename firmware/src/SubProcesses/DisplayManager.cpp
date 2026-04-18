@@ -34,7 +34,7 @@
 
 // system data
 #define FIRMWARE_MAJOR 7
-#define FIRMWARE_BUILD 1
+#define FIRMWARE_BUILD 2
 #define FIRMWARE_NAME "convergence"
 
 /*
@@ -593,6 +593,7 @@ void DisplayFlashlight(Adafruit_ST7789 displayModule, ExecutiveData *execuitveDa
         if (execuitveData->getFlashlightEnabled() != g_updatedFlashlight)
         {
             displayModule.fillScreen(ST77XX_WHITE);
+            g_updatedFlashlight = execuitveData->getFlashlightEnabled();
         }
     }
     else

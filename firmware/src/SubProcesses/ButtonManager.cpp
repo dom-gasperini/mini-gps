@@ -115,13 +115,13 @@ void ButtonManager(IoData *ioData)
                 bool prev = g_optionButtonStableState;
                 g_optionButtonStableState = raw;
 
-                if (prev == LOW && g_optionButtonStableState == HIGH)
+                if (prev == HIGH && g_optionButtonStableState == LOW)
                 {
                     g_optionButtonPressStartTime = now;
                     g_optionButtonLongPressFired = false;
                 }
 
-                if (prev == HIGH && g_optionButtonStableState == LOW)
+                if (prev == LOW && g_optionButtonStableState == HIGH)
                 {
                     if (!g_optionButtonLongPressFired)
                     {
@@ -131,7 +131,7 @@ void ButtonManager(IoData *ioData)
             }
         }
 
-        if (g_optionButtonStableState == LOW && !g_optionButtonLongPressFired)
+        if (g_optionButtonStableState == HIGH && !g_optionButtonLongPressFired)
         {
             if ((now - g_optionButtonPressStartTime) >= LONG_PRESS_DURATION)
             {
