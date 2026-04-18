@@ -1,14 +1,35 @@
+/**
+ * @file IoData.h
+ * @brief
+ * @date 2026-04-17
+ */
+
 #ifndef IODATA_H
 #define IODATA_H
 
+/*
+===============================================================================================
+                                    includes
+===============================================================================================
+*/
+
 #include <mutex>
 
+/*
+===============================================================================================
+                                    class
+===============================================================================================
+*/
+
+/**
+ *
+ */
 class IoData
 {
 public:
     IoData();
 
-    // Getters
+    // getters
     bool getSelectShortPress() const;
     bool getSelectLongPress() const;
     bool getOptionShortPress() const;
@@ -18,7 +39,7 @@ public:
     bool getSpecialShortPress() const;
     bool getSpecialLongPress() const;
 
-    // Setters
+    // setters
     void setSelectShortPress(bool value);
     void setSelectLongPress(bool value);
     void setOptionShortPress(bool value);

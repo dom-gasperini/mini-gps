@@ -1,9 +1,27 @@
+/**
+ * @file ExecutiveData.h
+ * @brief
+ * @date 2026-04-17
+ */
+
 #ifndef EXECUTIVE_DATA_H
 #define EXECUTIVE_DATA_H
+
+/*
+===============================================================================================
+                                    includes
+===============================================================================================
+*/
 
 #include <Arduino.h>
 #include <vector>
 #include <mutex>
+
+/*
+===============================================================================================
+                                    typedefs
+===============================================================================================
+*/
 
 /**
  * @brief all of the data associated with a waypoint
@@ -23,10 +41,16 @@ typedef enum
     GPS_MODE = 0,
     WAYPOINT_MODE,
     SYSTEM_MODE,
-    ERROR_MODE, // error mode is a mode cycle select bookend, add new cycle modes before here
+    ERROR_MODE, // error mode is a mode select cycle bookend, sub-modes go after here
     SLEEP_PROMPT_MODE,
     FLASHLIGHT_MODE,
 } DisplayModeType;
+
+/*
+===============================================================================================
+                                    class
+===============================================================================================
+*/
 
 /**
  *

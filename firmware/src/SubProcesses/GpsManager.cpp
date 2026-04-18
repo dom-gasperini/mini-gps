@@ -1,3 +1,9 @@
+/**
+ * @file GpsManager.cpp
+ * @brief
+ * @date 2026-04-17
+ */
+
 /*
 ===============================================================================================
                                     includes
@@ -26,8 +32,15 @@
                                   global variables
 ===============================================================================================
 */
+
 unsigned long g_gpsCounter = 0;
 unsigned long g_lastGpsTime = 0;
+
+/*
+===============================================================================================
+                                    functions
+===============================================================================================
+*/
 
 /**
  *
@@ -66,7 +79,7 @@ void GpsManager(Adafruit_GPS *gpsModule, GpsData *gpsData)
                 gpsData->setSpeed(gpsModule->speed); // speed is given in knots
                 gpsData->setHeading(gpsModule->angle);
 
-                // apply velocity deadband
+                // // apply velocity deadband
                 if (gpsData->getSpeed() >= MIN_SPEED)
                 {
                     gpsData->setSpeed(gpsData->getSpeed() * KNOTS_TO_MPH); // convert to mph

@@ -73,16 +73,17 @@
 #define NVS_WP_5_LONG_KEY "wp5-long"
 #define NVS_WP_5_NAME_KEY "wp5-name"
 
-// tasks
+// task config
 #define TASK_STACK_SIZE 4096 // in bytes
 #define EXECUTIVE_CORE 0
 #define DISPLAY_CORE 1
 
-#define EXECUTIVE_REFRESH_RATE 2 // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define IO_REFRESH_RATE 2        // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define GPS_REFRESH_RATE 10      // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 50  // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000  // in RTOS ticks (1 tick = interrupt at 1 kHz)
+// task frequencies (in RTOS ticks [1 tick = interrupt at 1 kHz])
+#define EXECUTIVE_REFRESH_RATE 2
+#define IO_REFRESH_RATE 2
+#define GPS_REFRESH_RATE 4
+#define DISPLAY_REFRESH_RATE 20
+#define DEBUG_REFRESH_RATE 1000
 
 // debugging
 #define DEBUG_BOOT_DELAY 1000 // in milliseconds
@@ -117,8 +118,9 @@ DebuggerType g_debugger = {
     .displayTaskPreviousCount = 0,
 };
 
-// Non-voltile storage
+// non-voltile storage
 Preferences g_wpStorage;
+bool g_wasSleeping = false;
 
 // battery management
 Adafruit_MAX17048 *g_batteryModule = new Adafruit_MAX17048();
@@ -128,17 +130,14 @@ Adafruit_GPS *g_gpsModule = new Adafruit_GPS(&Wire);
 
 // display
 Adafruit_ST7789 g_displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // 240x135
-DisplayModeType g_previousDisplayMode = GPS_MODE;
+DisplayModeType g_previousDisplayMode = ERROR_MODE;
 
 // data
 ExecutiveData *g_executiveData = new ExecutiveData();
 GpsData *g_gpsData = new GpsData();
 IoData *g_ioData = new IoData();
 
-// time keeping
-bool g_wasSleeping = false;
-
-// rtos task handles
+// task handles
 TaskHandle_t xHandleExecutive = NULL;
 TaskHandle_t xHandleIo = NULL;
 TaskHandle_t xHandleGps = NULL;
@@ -405,20 +404,19 @@ void ExecutiveTask(void *pvParameters)
     StateManager(g_executiveData, g_ioData);
 
     // --- sleep logic --- //
-    // if (g_executiveData->getSleepModeEnable())
-    // {
-    //   // turn off display and gps module power
-    //   // digitalWrite(GPS_WAKE_PIN, LOW);
-    //   // gpsModule.sendCommand(PTMK_BACKUP_MODE); // backup power command, cannot be awkoen via softare
-    //   g_gpsModule.sendCommand(PTMK_STANDBY_MODE); // can be awoken from software
-    //   g_batteryModule->sleep(true);
-    //   g_wpStorage.putBool(NVS_WAS_SLEEPING_KEY, true);
-    //   g_wpStorage.end();
-    //   digitalWrite(TFT_I2C_POWER, LOW);
+    if (g_executiveData->getSleepModeEnable())
+    {
+      // turn off display and gps module power
+      // digitalWrite(GPS_WAKE_PIN, LOW); // hard gps power
+      // gpsModule.sendCommand(PTMK_BACKUP_MODE); // backup power command, cannot be awkoen via softare
+      g_gpsModule->sendCommand(PTMK_STANDBY_MODE); // can be awoken from software
+      g_batteryModule->sleep(true);
+      g_wpStorage.putBool(NVS_WAS_SLEEPING_KEY, true);
+      g_wpStorage.end();
+      digitalWrite(TFT_I2C_POWER, LOW);
 
-    //   esp_deep_sleep_start();
-    // }
-    // --- sleep logic --- //
+      esp_deep_sleep_start();
+    }
 
     // debugging
     if (g_debugger.debugEnabled)
@@ -442,10 +440,8 @@ void IoTask(void *pvParameters)
     // limit task refresh rate
     vTaskDelayUntil(&taskLastWakeTick, xFrequency);
 
-    BatteryManager(g_batteryModule, g_executiveData);
     ButtonManager(g_ioData);
-
-    // ----------------------------------------------- //
+    BatteryManager(g_batteryModule, g_executiveData);
 
     // debugging
     if (g_debugger.debugEnabled)
@@ -475,24 +471,6 @@ void GpsTask(void *pvParameters)
     // debugging
     if (g_debugger.debugEnabled)
     {
-      // Serial.printf("fix: %s\n", gpsModule.fix ? "yes" : "no");
-      // Serial.printf("# sats: %d\n", gpsModule.satellites);
-
-      // Serial.printf("time: %d:%d:%d\n", gpsModule.hour, gpsModule.minute, gpsModule.seconds);
-      // Serial.printf("date: %d-%d-%d\n", gpsModule.year, gpsModule.month, gpsModule.day);
-
-      // Serial.printf("lat: %f\n", gpsModule.latitude);
-      // Serial.printf("long: %f\n", gpsModule.longitude);
-      // Serial.printf("alt: %f\n", gpsModule.altitude);
-
-      // Serial.printf("dt-fix: %f\n", gpsModule.secondsSinceFix());
-      // Serial.printf("dt-time: %f\n", gpsModule.secondsSinceTime());
-      // Serial.printf("dt-date: %f\n", gpsModule.secondsSinceDate());
-
-      // char c = gpsModule.read();
-      // if (c)
-      //   Serial.print(c);
-
       g_debugger.gpsTaskCount++;
     }
   }
@@ -595,8 +573,8 @@ void FlashNVS()
   g_wpStorage.putFloat(NVS_WP_3_LONG_KEY, -74.04034);
   g_wpStorage.putString(NVS_WP_3_NAME_KEY, String("fair haven"));
 
-  g_wpStorage.putFloat(NVS_WP_4_LAT_KEY, 40.748048);
-  g_wpStorage.putFloat(NVS_WP_4_LONG_KEY, -73.986048);
+  g_wpStorage.putFloat(NVS_WP_4_LAT_KEY, 40.748041);
+  g_wpStorage.putFloat(NVS_WP_4_LONG_KEY, -73.986041);
   g_wpStorage.putString(NVS_WP_4_NAME_KEY, String("nyc"));
 
   g_wpStorage.putFloat(NVS_WP_5_LAT_KEY, -100);
@@ -618,20 +596,6 @@ void FlashNVS()
 void PrintIODebug()
 {
   Serial.printf("\n--- start i/o debug ---\n");
-
-  // Serial.printf("select short cntr: %d\n", selectButtonCounter);
-  // Serial.printf("option short cntr: %d\n", optionButtonCounter);
-  // Serial.printf("return short cntr: %d\n", returnButtonCounter);
-
-  // Serial.printf("select short: %s\n", debugger.inputFlags.selectShortPress ? "on" : "off");
-  // Serial.printf("select long: %s\n", systemManager.inputFlags.selectLongPress ? "on" : "off");
-
-  // Serial.printf("option short: %s\n", systemManager.inputFlags.optionShortPress ? "on" : "off");
-  // Serial.printf("option long: %s\n", systemManager.inputFlags.optionLongPress ? "on" : "off");
-
-  // Serial.printf("return short: %s\n", systemManager.inputFlags.returnShortPress ? "on" : "off");
-  // Serial.printf("return long: %s\n", systemManager.inputFlags.returnLongPress ? "on" : "off");
-
   Serial.printf("\n--- end i/o debug ---\n");
 }
 
@@ -641,39 +605,6 @@ void PrintIODebug()
 void PrintGpsDebug()
 {
   Serial.printf("\n--- start gps debug ---\n");
-
-  // debugger.debugText = "";
-  // for (int i = 0; i < 100; ++i)
-  // {
-  //   if (Serial.available())
-  //   {
-  //     char c = Serial.read();
-  //     gpsModule.write(c);
-  //   }
-  //   if (gpsModule.available())
-  //   {
-  //     char c = gpsModule.read();
-  //     Serial.write(c);
-
-  //     debugger.debugText.concat(c);
-  //   }
-  // }
-  // Serial.printf("\n\n");
-
-  // Serial.printf("fix: %s\n", gpsModule.fix ? "yes" : "no");
-  // Serial.printf("# sats: %d\n", gps.satellites);
-
-  // Serial.printf("time: %d:%d:%d\n", gps.hour, gps.minute, gps.seconds);
-  // Serial.printf("date: %d-%d-%d\n", gps.year, gps.month, gps.day);
-
-  // Serial.printf("lat: %f\n", gps.latitude);
-  // Serial.printf("long: %f\n", gps.longitude);
-  // Serial.printf("alt: %f\n", gps.altitude);
-
-  // Serial.printf("dt-fix: %f\n", gps.secondsSinceFix());
-  // Serial.printf("dt-time: %f\n", gps.secondsSinceTime());
-  // Serial.printf("dt-date: %f\n", gps.secondsSinceDate());
-
   Serial.printf("\n--- end gps debug ---\n");
 }
 

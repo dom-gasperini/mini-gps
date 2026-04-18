@@ -1,3 +1,9 @@
+/**
+ * @file ButtonManager.cpp
+ * @brief
+ * @date 2026-04-17
+ */
+
 /*
 ===============================================================================================
                                     includes
@@ -40,6 +46,12 @@ bool g_returnButtonStableState = HIGH;
 bool g_returnButtonLongPressFired = false;
 unsigned long g_returnButtonDebounceTime = 0;
 unsigned long g_returnButtonPressStartTime = 0;
+
+/*
+===============================================================================================
+                                    functions
+===============================================================================================
+*/
 
 /**
  *

@@ -1,11 +1,38 @@
+/**
+ * @file GpsData.h
+ * @brief
+ * @date 2026-04-17
+ */
+
 #ifndef GPSDATA_H
 #define GPSDATA_H
 
+/*
+===============================================================================================
+                                    includes
+===============================================================================================
+*/
+
 #include <mutex>
 
-#define MIN_SPEED 1.0 // minimum number of knots before displaying speed to due resolution limitations
+/*
+===============================================================================================
+                                    definitions
+===============================================================================================
+*/
+
+#define MIN_SPEED 0.0 // minimum number of knots before displaying speed to due resolution limitations
 #define MIN_SATS 3    // min number of sats to have a fix
 
+/*
+===============================================================================================
+                                    class
+===============================================================================================
+*/
+
+/**
+ *
+ */
 class GpsData
 {
 private:

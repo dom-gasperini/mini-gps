@@ -1,9 +1,7 @@
 /**
  * @file data_types.h
- * @author dom gasperini
- * @brief defines all of the custom data types used throughout mini gps firmware
- * @version 6
- * @date 2025-10-03
+ * @brief
+ * @date 2026-04-17
  */
 
 /*
@@ -13,7 +11,6 @@
 */
 
 #include <Arduino.h>
-#include <vector>
 
 /*
 ========================================================
@@ -30,91 +27,6 @@ typedef struct
     bool displayActive;
     bool gpsActive;
 } InitDeviceType;
-
-// /**
-//  * @brief input flags for the user buttons
-//  */
-// typedef struct
-// {
-//     bool selectShortPress;
-//     bool selectLongPress;
-
-//     bool optionShortPress;
-//     bool optionLongPress;
-
-//     bool returnShortPress;
-//     bool returnLongPress;
-
-//     bool specialShortPress;
-//     bool specialLongPress;
-// } InputFlagsType;
-
-// /**
-//  * @brief all data associated with the power state of the device
-//  */
-// typedef struct
-// {
-//     bool lowBatteryModeEnable;
-//     bool sleepModeEnable;
-
-//     float batteryPercent;
-//     float batteryVoltage;
-//     float batteryChargeRate;
-//     uint8_t alertStatus;
-// } PowerDataType;
-
-// /**
-//  * @brief all data associated with the state of the display
-//  */
-// typedef struct
-// {
-//     DisplayModeType displayMode;
-//     DisplayModeType previousDisplayMode;
-// } DisplayDataType;
-
-// /**
-//  * @brief all gps data
-//  */
-// typedef struct
-// {
-//     bool validDate;
-//     uint8_t fixQuality;
-//     float dtLastFix;
-//     float dtSinceDate;
-//     float dtSinceTime;
-
-//     float latitude;
-//     float longitude;
-//     float altitude;
-
-//     float speed;
-//     float heading;
-
-//     int year;
-//     int month;
-//     int day;
-
-//     int hour;
-//     int minute;
-//     int second;
-//     long timeout;
-
-//     uint8_t numSats;
-//     float refreshRate;
-// } GpsDataType;
-
-// /**
-//  * @brief all data associated with the mini gps system state
-//  */
-// typedef struct
-// {
-//     InputFlagsType inputFlags;
-//     PowerDataType power;
-//     DisplayDataType display;
-//     WaypointDataType waypointData;
-//     bool enableDebug;
-//     bool enableFlashlight;
-// } SystemDataType;
 
 /**
  * @brief debug data

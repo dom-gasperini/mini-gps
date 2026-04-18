@@ -1,3 +1,9 @@
+/**
+ * @file DisplayManager.cpp
+ * @brief
+ * @date 2026-04-17
+ */
+
 /*
 ===============================================================================================
                                     includes
@@ -20,7 +26,12 @@
 */
 
 #define RADIUS_OF_EARTH 3958.756           // in miles
-#define REFRESH_WAYPOINT_VECTOR_DELAY 5000 // in milliseconds
+#define REFRESH_WAYPOINT_VECTOR_DELAY 1000 // in milliseconds
+
+// gps
+#define DT_FIX_SOFT_LOST_SIGNAL_TIME_EXPIRED 60.0
+#define DT_FIX_SOFT_LOST_SIGNAL_TIME_START 1.0
+#define DT_FIX_EXPIRED_TIME 600
 
 // battery info
 #define HALF_BATTERY_CAPACITY 50.0 // in %
@@ -34,7 +45,7 @@
 
 // system data
 #define FIRMWARE_MAJOR 7
-#define FIRMWARE_BUILD 2
+#define FIRMWARE_BUILD 3
 #define FIRMWARE_NAME "convergence"
 
 /*
@@ -46,6 +57,7 @@
 unsigned long g_lastBatteryChargeIndicatorTime = 0;
 int g_previousSelectedWaypoint = -1; // init to non-existant index to force first time compute of vector
 unsigned long g_waypointLastComputeTime = 0;
+bool g_validWaypointData = false;
 
 unsigned long g_refreshRateCounter = 0;
 unsigned long g_refreshRateLastTime = 0;
@@ -63,15 +75,15 @@ bool g_showDebugData = false;
 ===============================================================================================
 */
 
-void DisplayGpsData(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData);
-void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData);
-void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData);
-void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData);
-void DisplayError(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData);
-void DisplayFlashlight(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData);
-void DisplaySleepPrompt(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData);
+void DisplayGpsData(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData);
+void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData);
+void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *executiveData);
+void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData);
+void DisplayError(Adafruit_ST7789 displayModule, ExecutiveData *executiveData);
+void DisplayFlashlight(Adafruit_ST7789 displayModule, ExecutiveData *executiveData);
+void DisplaySleepPrompt(Adafruit_ST7789 displayModule, ExecutiveData *executiveData);
 void DrawCloud(Adafruit_ST7789 displayModule, int x, int y, int size, int color);
-void DisplayDebug(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData);
+void DisplayDebug(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData);
 void BitGraphics(Adafruit_ST7789 displayModule);
 
 void BitFillRectangles(Adafruit_ST7789 displayModule, uint16_t color1, uint16_t color2);
@@ -83,6 +95,12 @@ std::pair<uint16_t, uint16_t> FixStatusColorManager(int fixQuality, bool validDa
 float CalculateWaypointDistance(GpsData *gpsData, WaypointCoordinatesType wp);
 float CalculateWaypointBearing(GpsData *gpsData, WaypointCoordinatesType wp);
 
+/*
+===============================================================================================
+                                    functions
+===============================================================================================
+*/
+
 /**
  *
  */
@@ -92,7 +110,10 @@ void DisplayManager(Adafruit_ST7789 displayModule, ExecutiveData *executiveData,
     {
         displayModule.fillScreen(ST77XX_BLACK);
         executiveData->setPreviousDisplayMode(executiveData->getDisplayMode());
+
+        // extras
         g_drewMoonIcon = false;
+        g_validWaypointData = !executiveData->getWaypoints().empty();
     }
 
     // status bar
@@ -137,10 +158,10 @@ void DisplayManager(Adafruit_ST7789 displayModule, ExecutiveData *executiveData,
  * @brief general gps data screen
  * @param gps - the current gps data
  */
-void DisplayGpsData(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData)
+void DisplayGpsData(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData)
 {
     // debug data
-    DisplayDebug(displayModule, execuitveData, gpsData);
+    DisplayDebug(displayModule, executiveData, gpsData);
 
     // location
     displayModule.setTextSize(2);
@@ -184,7 +205,7 @@ void DisplayGpsData(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData,
     // heading
     displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
     displayModule.setCursor(190, 90);
-    if (gpsData->getSpeed() > MIN_SPEED)
+    if (gpsData->getNumSats() >= MIN_SATS && gpsData->getSpeed() > 0)
     {
         displayModule.printf("%03d%c", (int)gpsData->getHeading(), 0xF7);
     }
@@ -247,15 +268,25 @@ void DisplayGpsData(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData,
         }
         else // there is valid fix data
         {
-            if (gpsData->getDtLastFix() >= 0 && gpsData->getDtLastFix() < 1.0)
+            if (gpsData->getDtLastFix() > 0 && gpsData->getDtLastFix() < DT_FIX_SOFT_LOST_SIGNAL_TIME_START)
             {
                 displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
-                displayModule.printf("dt-fix: %.2fs ", gpsData->getDtLastFix());
+                displayModule.printf("dt-fix: %.2fs    ", gpsData->getDtLastFix());
             }
-            else if (gpsData->getDtLastFix() <= 60 && gpsData->getDtLastFix() >= 1.0)
+            else if (gpsData->getDtLastFix() >= DT_FIX_SOFT_LOST_SIGNAL_TIME_START && gpsData->getDtLastFix() <= DT_FIX_SOFT_LOST_SIGNAL_TIME_EXPIRED)
             {
                 displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
-                displayModule.printf("dt-fix: %.2fs ", gpsData->getDtLastFix());
+                displayModule.printf("dt-fix: %.2fs    ", gpsData->getDtLastFix());
+            }
+            else if (gpsData->getDtLastFix() > DT_FIX_SOFT_LOST_SIGNAL_TIME_EXPIRED && gpsData->getDtLastFix() < DT_FIX_EXPIRED_TIME)
+            {
+                displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+                displayModule.printf("dt-fix: %.2fs    ", gpsData->getDtLastFix());
+            }
+            else if (gpsData->getDtLastFix() <= DT_FIX_SOFT_LOST_SIGNAL_TIME_EXPIRED)
+            {
+                displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
+                displayModule.printf("dt-fix: ages      ", gpsData->getDtLastFix());
             }
         }
     }
@@ -269,32 +300,32 @@ void DisplayGpsData(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData,
 /**
  * @brief the waypoint screen
  * @param displayModule - the display module
- * @param execuitveData - the current executive data
+ * @param executiveData - the current executive data
  * @param gpsData - the current gps data
  */
-void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData)
+void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData)
 {
     // ensure there is valid waypoint data
-    if (!execuitveData->getWaypoints().empty())
+    if (g_validWaypointData)
     {
         // waypoint selector
         displayModule.setTextSize(1);
         displayModule.setCursor(0, 20);
         displayModule.setTextColor(ST77XX_ORANGE, ST77XX_BLACK);
-        displayModule.printf("waypoint: %d", execuitveData->getSelectedWaypoint());
+        displayModule.printf("waypoint: %d", executiveData->getSelectedWaypoint());
 
         // display waypoint coordinates
         displayModule.setCursor(0, 30);
-        displayModule.printf("lat: %.5f", execuitveData->getWaypoints().at(execuitveData->getSelectedWaypoint()).latitude);
+        displayModule.printf("lat: %.5f", executiveData->getWaypoints().at(executiveData->getSelectedWaypoint()).latitude);
 
         displayModule.setCursor(0, 40);
-        displayModule.printf("long: %.5f", execuitveData->getWaypoints().at(execuitveData->getSelectedWaypoint()).longitude);
+        displayModule.printf("long: %.5f", executiveData->getWaypoints().at(executiveData->getSelectedWaypoint()).longitude);
 
         displayModule.setCursor(0, 50);
-        displayModule.printf("name: %s                 ", execuitveData->getWaypoints().at(execuitveData->getSelectedWaypoint()).name.c_str());
+        displayModule.printf("name: %s                 ", executiveData->getWaypoints().at(executiveData->getSelectedWaypoint()).name.c_str());
 
         // display current coordinates
-        if (gpsData->getDtLastFix() > 0)
+        if (gpsData->getDtLastFix() > 0) // using dt-fix rather than min sat to preserve last fix
         {
             displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
             displayModule.setCursor(150, 20);
@@ -329,9 +360,9 @@ void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData
         }
 
         // compute and then show calcuations on select short press
-        if ((execuitveData->getSelectedWaypoint() != g_previousSelectedWaypoint || staleVector) && gpsData->getDtLastFix() > 0)
+        if ((executiveData->getSelectedWaypoint() != g_previousSelectedWaypoint || staleVector) && gpsData->getDtLastFix() > 0)
         {
-            WaypointCoordinatesType waypoint = execuitveData->getWaypoints().at(execuitveData->getSelectedWaypoint());
+            WaypointCoordinatesType waypoint = executiveData->getWaypoints().at(executiveData->getSelectedWaypoint());
 
             // inits
             displayModule.setTextSize(2);
@@ -345,7 +376,7 @@ void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData
             displayModule.setCursor(0, 110);
             displayModule.printf("@ %.0f%c  ", CalculateWaypointBearing(gpsData, waypoint), 0xF7);
         }
-        g_previousSelectedWaypoint = execuitveData->getSelectedWaypoint();
+        g_previousSelectedWaypoint = executiveData->getSelectedWaypoint();
     }
     else
     {
@@ -358,19 +389,19 @@ void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData
 /**
  * @brief system information screen
  * @param displayModule - the display module
- * @param execuitveData - the current executive data
+ * @param executiveData - the current executive data
  */
-void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
+void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *executiveData)
 {
     displayModule.setTextSize(2);
     displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
     // display battery percent charge
-    if (execuitveData->getBatteryPercent() >= HALF_BATTERY_CAPACITY)
+    if (executiveData->getBatteryPercent() >= HALF_BATTERY_CAPACITY)
     {
         displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
     }
-    else if (execuitveData->getBatteryPercent() > LOW_BATTERY_CAPACITY)
+    else if (executiveData->getBatteryPercent() > LOW_BATTERY_CAPACITY)
     {
         displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
     }
@@ -379,14 +410,14 @@ void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
         displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
     }
     displayModule.setCursor(0, 30);
-    displayModule.printf("battery: %.1f%% ", execuitveData->getBatteryPercent());
+    displayModule.printf("battery: %.1f%% ", executiveData->getBatteryPercent());
 
     // display battery voltage
-    if (execuitveData->getBatteryVoltage() >= HIGH_BATTERY_VOLTAGE)
+    if (executiveData->getBatteryVoltage() >= HIGH_BATTERY_VOLTAGE)
     {
         displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
     }
-    else if (execuitveData->getBatteryVoltage() > LOW_BATTERY_VOLTAGE)
+    else if (executiveData->getBatteryVoltage() > LOW_BATTERY_VOLTAGE)
     {
         displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
     }
@@ -395,9 +426,9 @@ void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
         displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
     }
     displayModule.setCursor(0, 50);
-    displayModule.printf("voltage: %.3fv", execuitveData->getBatteryVoltage());
+    displayModule.printf("voltage: %.3fv", executiveData->getBatteryVoltage());
 
-    if (execuitveData->getBatteryChargeRate() >= 0.0f)
+    if (executiveData->getBatteryChargeRate() >= 0.0f)
     {
         displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
     }
@@ -406,7 +437,7 @@ void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
         displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
     }
     displayModule.setCursor(0, 70);
-    displayModule.printf("rate: %.1f %%/h  ", execuitveData->getBatteryChargeRate());
+    displayModule.printf("rate: %.1f %%/h  ", executiveData->getBatteryChargeRate());
 
     // uptime
     displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
@@ -434,7 +465,7 @@ void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
     g_refreshRateCounter++;
     unsigned long now = millis();
     if (now - g_refreshRateLastTime >= DISPLAY_REFRESH_RATE_CALCULATE_INTERVAL)
-    {                                                                                      // 1 second passed
+    {
         float refreshRate = g_refreshRateCounter * 1000.0 / (now - g_refreshRateLastTime); // Hz
         g_refreshRateCounter = 0;
         g_refreshRateLastTime = now;
@@ -449,10 +480,10 @@ void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
 /**
  * @brief display a status bar at the top of the screen with important information
  * @param displayModule - the display module
- * @param execuitveData - the current executive data
+ * @param executiveData - the current executive data
  * @param gpsData - the current gps data
  */
-void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData)
+void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData)
 {
     // inits
     int textY = 5;
@@ -462,7 +493,7 @@ void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *execuitveDat
     int underscoreLength;
     displayModule.setCursor(0, textY);
     displayModule.setTextSize(1);
-    switch (execuitveData->getDisplayMode())
+    switch (executiveData->getDisplayMode())
     {
     case GPS_MODE:
         mode = "gps";
@@ -524,7 +555,7 @@ void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *execuitveDat
     // write battery percentage
     displayModule.setTextSize(1);
     displayModule.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
-    String buffer = String((int)execuitveData->getBatteryPercent()).substring(0, 3);
+    String buffer = String((int)executiveData->getBatteryPercent()).substring(0, 3);
     uint16_t strLen = buffer.length();
     uint16_t batterySymbolWidth = (strLen * 8) + 10;               // +10 for % symbol
     uint16_t batterySymbolX = 240 - (batterySymbolWidth + strLen); // screen width - (text + symbol width)
@@ -533,7 +564,7 @@ void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *execuitveDat
     displayModule.printf("%s%% ", buffer.c_str());
 
     // draw battery symbol
-    if (execuitveData->getBatteryChargeRate() > 0.0f)
+    if (executiveData->getBatteryChargeRate() > 0.0f)
     {
         // do time keeping
         unsigned long now = millis();
@@ -549,15 +580,15 @@ void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *execuitveDat
     }
     else
     {
-        if (execuitveData->getBatteryPercent() > 50.0)
+        if (executiveData->getBatteryPercent() > 50.0)
         {
             displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_GREEN);
         }
-        else if (execuitveData->getBatteryPercent() > 20.0 && execuitveData->getBatteryPercent() <= 50.0)
+        else if (executiveData->getBatteryPercent() > 20.0 && executiveData->getBatteryPercent() <= 50.0)
         {
             displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_ORANGE);
         }
-        else if (execuitveData->getBatteryPercent() <= 20.0)
+        else if (executiveData->getBatteryPercent() <= 20.0)
         {
             displayModule.drawRoundRect(batterySymbolX, 2, batterySymbolWidth, 12, 4, ST77XX_RED);
         }
@@ -568,9 +599,9 @@ void DisplayStatusBar(Adafruit_ST7789 displayModule, ExecutiveData *execuitveDat
 /**
  * @brief display screen that indicates a failure in display modes
  * @param displayModule - the display module
- * @param execuitveData - the current executive data
+ * @param executiveData - the current executive data
  */
-void DisplayError(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
+void DisplayError(Adafruit_ST7789 displayModule, ExecutiveData *executiveData)
 {
     // init screen
     displayModule.fillScreen(ST77XX_BLACK);
@@ -584,16 +615,16 @@ void DisplayError(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
 /**
  * @brief why not?
  * @param displayModule - the display module
- * @param execuitveData - the current executive data
+ * @param executiveData - the current executive data
  */
-void DisplayFlashlight(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
+void DisplayFlashlight(Adafruit_ST7789 displayModule, ExecutiveData *executiveData)
 {
-    if (execuitveData->getFlashlightEnabled())
+    if (executiveData->getFlashlightEnabled())
     {
-        if (execuitveData->getFlashlightEnabled() != g_updatedFlashlight)
+        if (executiveData->getFlashlightEnabled() != g_updatedFlashlight)
         {
             displayModule.fillScreen(ST77XX_WHITE);
-            g_updatedFlashlight = execuitveData->getFlashlightEnabled();
+            g_updatedFlashlight = executiveData->getFlashlightEnabled();
         }
     }
     else
@@ -602,20 +633,20 @@ void DisplayFlashlight(Adafruit_ST7789 displayModule, ExecutiveData *execuitveDa
         displayModule.setTextColor(ST77XX_RED, ST77XX_BLACK);
         displayModule.setTextSize(2);
         displayModule.printf("<] on / off");
-        if (execuitveData->getFlashlightEnabled() != g_updatedFlashlight)
+        if (executiveData->getFlashlightEnabled() != g_updatedFlashlight)
         {
             displayModule.fillScreen(ST77XX_BLACK);
         }
     }
-    g_updatedFlashlight = execuitveData->getFlashlightEnabled();
+    g_updatedFlashlight = executiveData->getFlashlightEnabled();
 }
 
 /**
  * @brief while device is entering sleep mode popup
  * @param displayModule - the display module
- * @param execuitveData - the current executive data
+ * @param executiveData - the current executive data
  */
-void DisplaySleepPrompt(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData)
+void DisplaySleepPrompt(Adafruit_ST7789 displayModule, ExecutiveData *executiveData)
 {
     displayModule.setTextSize(2);
     displayModule.setCursor(25, 30);
@@ -668,12 +699,12 @@ void DrawCloud(Adafruit_ST7789 displayModule, int x, int y, int size, int color)
  * @param sd - the current system data
  * @param gps - the current gps data
  */
-void DisplayDebug(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, GpsData *gpsData)
+void DisplayDebug(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData)
 {
     // detect state change
-    if (g_previousDebugEnable != execuitveData->getDisplayDebugEnabled())
+    if (g_previousDebugEnable != executiveData->getDisplayDebugEnabled())
     {
-        if (execuitveData->getDisplayDebugEnabled())
+        if (executiveData->getDisplayDebugEnabled())
         {
             g_showDebugData = true;
             displayModule.drawRoundRect(105, 75, 75, 35, 5, ST77XX_RED);
@@ -686,7 +717,7 @@ void DisplayDebug(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData, G
             displayModule.fillRect(105, 75, 75, 35, ST77XX_BLACK);
         }
 
-        g_previousDebugEnable = execuitveData->getDisplayDebugEnabled();
+        g_previousDebugEnable = executiveData->getDisplayDebugEnabled();
     }
 
     // display debug data
