@@ -14,8 +14,8 @@
 ===============================================================================================
 */
 
-#define SHORT_PRESS_DURATION 100 // in milliseconds
-#define LONG_PRESS_DURATION 200  // in milliseconds
+#define DEBOUNCE_DURATION 8
+#define LONG_PRESS_DURATION 1500 // in milliseconds
 
 /*
 ===============================================================================================
@@ -23,91 +23,166 @@
 ===============================================================================================
 */
 
-bool g_selectButtonPreviousState = LOW;
-unsigned long g_selectButtonCounter = 0;
-bool g_selectButtonToggle = false;
+bool g_selectButtonPreviousState = HIGH;
+bool g_selectButtonStableState = LOW;
+bool g_selectButtonLongPressFired = false;
+unsigned long g_selectButtonDebounceTime = 0;
+unsigned long g_selectButtonPressStartTime = 0;
 
 bool g_optionButtonPreviousState = LOW;
-unsigned long g_optionButtonCounter = 0;
-bool g_optionButtonToggle = false;
+bool g_optionButtonStableState = HIGH;
+bool g_optionButtonLongPressFired = false;
+unsigned long g_optionButtonDebounceTime = 0;
+unsigned long g_optionButtonPressStartTime = 0;
 
 bool g_returnButtonPreviousState = LOW;
-unsigned long g_returnButtonCounter = 0;
+bool g_returnButtonStableState = HIGH;
+bool g_returnButtonLongPressFired = false;
+unsigned long g_returnButtonDebounceTime = 0;
+unsigned long g_returnButtonPressStartTime = 0;
 
 /**
  *
  */
 void ButtonManager(IoData *ioData)
 {
-    // --- select button --- //
-    bool selectButtonState = digitalRead(SELECT_BUTTON);
+    unsigned long now = millis();
 
-    if (selectButtonState != g_selectButtonPreviousState)
+    // =========================
+    // SELECT BUTTON
+    // =========================
     {
-        g_selectButtonCounter = millis();
-        g_selectButtonPreviousState = selectButtonState;
+        bool raw = digitalRead(SELECT_BUTTON);
 
-        // check specifically for LOW -> HIGH
-        if (g_selectButtonPreviousState == HIGH)
+        if (raw != g_selectButtonPreviousState)
         {
-            if (millis() - g_selectButtonCounter > SHORT_PRESS_DURATION)
+            g_selectButtonDebounceTime = now;
+            g_selectButtonPreviousState = raw;
+        }
+
+        if ((now - g_selectButtonDebounceTime) > DEBOUNCE_DURATION)
+        {
+            if (raw != g_selectButtonStableState)
             {
+                bool prev = g_selectButtonStableState;
+                g_selectButtonStableState = raw;
+
+                // EDGE: pressed (HIGH assumed active)
+                if (prev == LOW && g_selectButtonStableState == HIGH)
+                {
+                    g_selectButtonPressStartTime = now;
+                    g_selectButtonLongPressFired = false;
+                }
+
+                // EDGE: released
+                if (prev == HIGH && g_selectButtonStableState == LOW)
+                {
+                    if (!g_selectButtonLongPressFired)
+                    {
+                        ioData->setSelectShortPress(true);
+                    }
+                }
+            }
+        }
+
+        // long press (state-based but NOT edge-based)
+        if (g_selectButtonStableState == LOW && !g_selectButtonLongPressFired)
+        {
+            if ((now - g_selectButtonPressStartTime) >= LONG_PRESS_DURATION)
+            {
+                g_selectButtonLongPressFired = true;
                 ioData->setSelectLongPress(true);
             }
-            else
-            {
-                ioData->setSelectShortPress(true);
-            }
         }
     }
-    g_selectButtonPreviousState = selectButtonState;
-    // --- select button --- //
 
-    // --- option button --- //
-    bool optionButtonState = digitalRead(OPTION_BUTTON);
-
-    if (optionButtonState != g_optionButtonPreviousState)
+    // =========================
+    // OPTION BUTTON
+    // =========================
     {
-        g_optionButtonCounter = millis();
-        g_optionButtonPreviousState = optionButtonState;
+        bool raw = digitalRead(OPTION_BUTTON);
 
-        // check specifically for HIGH -> LOW
-        if (g_optionButtonPreviousState == LOW)
+        if (raw != g_optionButtonPreviousState)
         {
-            if (millis() - g_optionButtonCounter > SHORT_PRESS_DURATION)
+            g_optionButtonDebounceTime = now;
+            g_optionButtonPreviousState = raw;
+        }
+
+        if ((now - g_optionButtonDebounceTime) > DEBOUNCE_DURATION)
+        {
+            if (raw != g_optionButtonStableState)
             {
+                bool prev = g_optionButtonStableState;
+                g_optionButtonStableState = raw;
+
+                if (prev == LOW && g_optionButtonStableState == HIGH)
+                {
+                    g_optionButtonPressStartTime = now;
+                    g_optionButtonLongPressFired = false;
+                }
+
+                if (prev == HIGH && g_optionButtonStableState == LOW)
+                {
+                    if (!g_optionButtonLongPressFired)
+                    {
+                        ioData->setOptionShortPress(true);
+                    }
+                }
+            }
+        }
+
+        if (g_optionButtonStableState == LOW && !g_optionButtonLongPressFired)
+        {
+            if ((now - g_optionButtonPressStartTime) >= LONG_PRESS_DURATION)
+            {
+                g_optionButtonLongPressFired = true;
                 ioData->setOptionLongPress(true);
             }
-            else
-            {
-                ioData->setOptionShortPress(true);
-            }
         }
     }
-    g_optionButtonPreviousState = optionButtonState;
-    // --- option button --- //
 
-    // --- return button --- //
-    bool returnButtonState = digitalRead(RETURN_BUTTON);
-
-    if (returnButtonState != g_returnButtonPreviousState)
+    // =========================
+    // RETURN BUTTON
+    // =========================
     {
-        g_returnButtonCounter = millis();
-        g_returnButtonPreviousState = returnButtonState;
+        bool raw = digitalRead(RETURN_BUTTON);
 
-        // check specifically for HIGH -> LOW
-        if (g_returnButtonPreviousState == LOW)
+        if (raw != g_returnButtonPreviousState)
         {
-            if (millis() - g_returnButtonCounter > SHORT_PRESS_DURATION)
+            g_returnButtonDebounceTime = now;
+            g_returnButtonPreviousState = raw;
+        }
+
+        if ((now - g_returnButtonDebounceTime) > DEBOUNCE_DURATION)
+        {
+            if (raw != g_returnButtonStableState)
             {
+                bool prev = g_returnButtonStableState;
+                g_returnButtonStableState = raw;
+
+                if (prev == HIGH && g_returnButtonStableState == LOW)
+                {
+                    g_returnButtonPressStartTime = now;
+                    g_returnButtonLongPressFired = false;
+                }
+
+                if (prev == LOW && g_returnButtonStableState == HIGH)
+                {
+                    if (!g_returnButtonLongPressFired)
+                    {
+                        ioData->setReturnShortPress(true);
+                    }
+                }
+            }
+        }
+
+        if (g_returnButtonStableState == HIGH && !g_returnButtonLongPressFired)
+        {
+            if ((now - g_returnButtonPressStartTime) >= LONG_PRESS_DURATION)
+            {
+                g_returnButtonLongPressFired = true;
                 ioData->setReturnLongPress(true);
             }
-            else
-            {
-                ioData->setReturnShortPress(true);
-            }
         }
     }
-    g_returnButtonPreviousState = returnButtonState;
-    // --- return button --- //
 }

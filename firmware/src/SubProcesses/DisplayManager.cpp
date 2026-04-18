@@ -92,6 +92,7 @@ void DisplayManager(Adafruit_ST7789 displayModule, ExecutiveData *executiveData,
     {
         displayModule.fillScreen(ST77XX_BLACK);
         executiveData->setPreviousDisplayMode(executiveData->getDisplayMode());
+        g_drewMoonIcon = false;
     }
 
     // status bar
@@ -293,15 +294,30 @@ void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData
         displayModule.printf("name: %s                 ", execuitveData->getWaypoints().at(execuitveData->getSelectedWaypoint()).name.c_str());
 
         // display current coordinates
-        displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
-        displayModule.setCursor(150, 20);
-        displayModule.printf("current:");
+        if (gpsData->getDtLastFix() > 0)
+        {
+            displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
+            displayModule.setCursor(150, 20);
+            displayModule.printf("current:");
 
-        displayModule.setCursor(150, 30);
-        displayModule.printf("lat: %.5f", gpsData->getLatitude());
+            displayModule.setCursor(150, 30);
+            displayModule.printf("lat: %.5f", gpsData->getLatitude());
 
-        displayModule.setCursor(150, 40);
-        displayModule.printf("long: %.5f", gpsData->getLongitude());
+            displayModule.setCursor(150, 40);
+            displayModule.printf("long: %.5f", gpsData->getLongitude());
+        }
+        else
+        {
+            displayModule.setTextColor(ST77XX_BLUE, ST77XX_BLACK);
+            displayModule.setCursor(150, 20);
+            displayModule.printf("current:");
+
+            displayModule.setCursor(150, 30);
+            displayModule.printf("lat: --------");
+
+            displayModule.setCursor(150, 40);
+            displayModule.printf("long: --------");
+        }
 
         // do time keeping
         bool staleVector = false;
@@ -313,7 +329,7 @@ void DisplayWaypoint(Adafruit_ST7789 displayModule, ExecutiveData *execuitveData
         }
 
         // compute and then show calcuations on select short press
-        if (execuitveData->getSelectedWaypoint() != g_previousSelectedWaypoint || staleVector)
+        if ((execuitveData->getSelectedWaypoint() != g_previousSelectedWaypoint || staleVector) && gpsData->getDtLastFix() > 0)
         {
             WaypointCoordinatesType waypoint = execuitveData->getWaypoints().at(execuitveData->getSelectedWaypoint());
 
@@ -618,7 +634,7 @@ void DisplaySleepPrompt(Adafruit_ST7789 displayModule, ExecutiveData *execuitveD
     {
         displayModule.fillCircle(180, 85, 30, ST77XX_YELLOW); // moon
         displayModule.fillCircle(170, 75, 30, ST77XX_BLACK);  // moon
-        DrawCloud(displayModule, 20, 115, 40, ST77XX_WHITE);
+        DrawCloud(displayModule, 205, 115, 40, ST77XX_WHITE);
         g_drewMoonIcon = true;
     }
 }

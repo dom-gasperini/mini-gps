@@ -10,7 +10,7 @@ unsigned long g_lastBatteryCheckTime = 0;
 /**
  * @brief collect information related to the battery
  */
-void BatteryManager(Adafruit_MAX17048 batteryModule, ExecutiveData *executiveData)
+void BatteryManager(Adafruit_MAX17048 *batteryModule, ExecutiveData *executiveData)
 {
     bool processBatteryData = false;
 
@@ -26,9 +26,9 @@ void BatteryManager(Adafruit_MAX17048 batteryModule, ExecutiveData *executiveDat
     if (processBatteryData)
     {
         // poll battery chip
-        executiveData->setBatteryPercent(batteryModule.cellPercent());
-        executiveData->setBatteryVoltage(batteryModule.cellVoltage());
-        executiveData->setBatteryChargeRate(batteryModule.chargeRate());
+        executiveData->setBatteryPercent(batteryModule->cellPercent());
+        executiveData->setBatteryVoltage(batteryModule->cellVoltage());
+        executiveData->setBatteryChargeRate(batteryModule->chargeRate());
 
         // --- low battery logic --- //
         if (executiveData->getBatteryPercent() <= LOW_BATTERY_THRESHOLD)

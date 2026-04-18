@@ -78,15 +78,15 @@
 #define EXECUTIVE_CORE 0
 #define DISPLAY_CORE 1
 
-#define EXECUTIVE_REFRESH_RATE 10 // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define IO_REFRESH_RATE 10        // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define GPS_REFRESH_RATE 10       // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define DISPLAY_REFRESH_RATE 50   // in RTOS ticks (1 tick = interrupt at 1 kHz)
-#define DEBUG_REFRESH_RATE 1000   // in RTOS ticks (1 tick = interrupt at 1 kHz)
+#define EXECUTIVE_REFRESH_RATE 2 // in RTOS ticks (1 tick = interrupt at 1 kHz)
+#define IO_REFRESH_RATE 2        // in RTOS ticks (1 tick = interrupt at 1 kHz)
+#define GPS_REFRESH_RATE 10      // in RTOS ticks (1 tick = interrupt at 1 kHz)
+#define DISPLAY_REFRESH_RATE 50  // in RTOS ticks (1 tick = interrupt at 1 kHz)
+#define DEBUG_REFRESH_RATE 1000  // in RTOS ticks (1 tick = interrupt at 1 kHz)
 
 // debugging
-#define DEBUG_BOOT_DELAY 1000  // in milliseconds
-#define ENABLE_DEBUGGING false // master debug toggle (does not disable boot output)
+#define DEBUG_BOOT_DELAY 1000 // in milliseconds
+#define ENABLE_DEBUGGING true // master debug toggle (does not disable boot output)
 
 /*
 ===============================================================================================
@@ -101,7 +101,7 @@ DebuggerType g_debugger = {
     .debugEnabled = ENABLE_DEBUGGING,
     .gps_debugEnabled = false,
     .display_debugEnabled = false,
-    .scheduler_debugEnable = false,
+    .scheduler_debugEnable = true,
 
     .debugText = "",
 
@@ -121,10 +121,10 @@ DebuggerType g_debugger = {
 Preferences g_wpStorage;
 
 // battery management
-Adafruit_MAX17048 g_batteryModule;
+Adafruit_MAX17048 *g_batteryModule = new Adafruit_MAX17048();
 
 // gps
-Adafruit_GPS g_gpsModule(&Wire);
+Adafruit_GPS *g_gpsModule = new Adafruit_GPS(&Wire);
 
 // display
 Adafruit_ST7789 g_displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // 240x135
@@ -160,8 +160,8 @@ void DebugTask(void *pvParameters);
 
 void StateManager(ExecutiveData *executiveData, IoData *ioData);
 void ButtonManager(IoData *ioData);
-void BatteryManager(Adafruit_MAX17048 batteryModule, ExecutiveData *executiveData);
-void GpsManager(Adafruit_GPS gpsModule, GpsData *gpsData);
+void BatteryManager(Adafruit_MAX17048 *batteryModule, ExecutiveData *executiveData);
+void GpsManager(Adafruit_GPS *gpsModule, GpsData *gpsData);
 void DisplayManager(Adafruit_ST7789 displayModule, ExecutiveData *executiveData, GpsData *gpsData);
 
 // helpers
@@ -203,6 +203,7 @@ void setup()
   // ------------------------------------------------------------------------- //
 
   // --------------------------- initialize IO ------------------------------- //
+  Serial.printf("io:\n");
   // power
   pinMode(TFT_I2C_POWER, OUTPUT);
   digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display and gps module
@@ -222,14 +223,15 @@ void setup()
   pinMode(OPTION_BUTTON, INPUT);
   pinMode(RETURN_BUTTON, INPUT); // the select button is set to an input by default, adding it here manually breaks its functionality
 
-  Serial.printf("gpio init [ success ]\n");
+  Serial.printf("\tgpio init [ success ]\n");
   setup.ioActive = true;
   // ------------------------------------------------------------------------- //
 
   // -------------------- initialize non-volitile storage -------------------- //
+  Serial.printf("nvs:\n");
   if (g_wpStorage.begin("wp-storage", false)) // true = read only | false = read/write
   {
-    Serial.printf("nvs init: [ success ]\n");
+    Serial.printf("\tnvs init: [ success ]\n");
 
     // flash nvs
     if (NVS_FLASH_WITH_DEFAULT)
@@ -245,6 +247,7 @@ void setup()
     tmpLong = g_wpStorage.getFloat(NVS_WP_1_LONG_KEY, -99);
     tmpName = g_wpStorage.getString(NVS_WP_1_NAME_KEY, " ");
     WaypointCoordinatesType wp1 = {tmpLat, tmpLong, tmpName};
+    Serial.printf("wp1: %s\n", wp1.name.c_str());
 
     tmpLat = g_wpStorage.getFloat(NVS_WP_2_LAT_KEY, -99);
     tmpLong = g_wpStorage.getFloat(NVS_WP_2_LONG_KEY, -99);
@@ -270,37 +273,36 @@ void setup()
     g_wpStorage.putBool(NVS_WAS_SLEEPING_KEY, false);
 
     // save to dynamic memory
-    g_executiveData->getWaypoints().push_back(wp1);
-    g_executiveData->getWaypoints().push_back(wp2);
-    g_executiveData->getWaypoints().push_back(wp3);
-    g_executiveData->getWaypoints().push_back(wp4);
-    g_executiveData->getWaypoints().push_back(wp5);
+    std::vector<WaypointCoordinatesType> tmpWps = {wp1, wp2, wp3, wp4, wp5};
+    g_executiveData->setWaypoints(tmpWps);
   }
   else
   {
-    Serial.printf("nvs init: [ failed ]\n");
+    Serial.printf("\tnvs init: [ failed ]\n");
   }
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize battery --------------------------- //
-  if (g_batteryModule.begin())
+  Serial.printf("battery:\n");
+  if (g_batteryModule->begin())
   {
-    Serial.printf("battery init [ success ]\n");
-    g_batteryModule.enableSleep(true);
+    Serial.printf("\tbattery init [ success ]\n");
+    g_batteryModule->enableSleep(true);
 
     // collect information
-    uint8_t chipId = g_batteryModule.getChipID();
-    g_executiveData->setBatteryPercent(g_batteryModule.cellPercent());
-    g_executiveData->setBatteryVoltage(g_batteryModule.cellVoltage());
+    uint8_t chipId = g_batteryModule->getChipID();
+    g_executiveData->setBatteryPercent(g_batteryModule->cellPercent());
+    g_executiveData->setBatteryVoltage(g_batteryModule->cellVoltage());
     Serial.printf("\tchip id: 0x%x\n", chipId);
   }
   else
   {
-    Serial.printf("battery init [ failed ]\n");
+    Serial.printf("\tbattery init [ failed ]\n");
   }
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize display --------------------------- //
+  Serial.printf("display:\n");
   g_displayModule.init(135, 240); // set display size
   g_displayModule.setRotation(3);
   g_displayModule.fillScreen(ST77XX_BLACK); // ensure display remains dim when backlight is turned on
@@ -325,29 +327,30 @@ void setup()
   }
 
   setup.displayActive = true;
-  Serial.printf("display init [ success ]\n");
+  Serial.printf("\tdisplay init [ success ]\n");
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  if (g_gpsModule.begin(GPS_I2C_ADDR))
+  Serial.printf("gps:\n");
+  if (g_gpsModule->begin(GPS_I2C_ADDR))
   {
-    g_gpsModule.sendCommand(""); // wake from standby mode by sending a byte
+    g_gpsModule->sendCommand(""); // wake from standby mode by sending a byte
 
     // set data filter
-    g_gpsModule.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+    g_gpsModule->sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
 
     // set update message rate
-    g_gpsModule.sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
+    g_gpsModule->sendCommand(PMTK_SET_NMEA_UPDATE_10HZ);
 
     // set position fix rate
-    g_gpsModule.sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
+    g_gpsModule->sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
 
-    Serial.printf("gps init [ success ]\n");
+    Serial.printf("\tgps init [ success ]\n");
     setup.gpsActive = true;
   }
   else
   {
-    Serial.printf("gps init [ failed ]\n");
+    Serial.printf("\tgps init [ failed ]\n");
   }
   // -------------------------------------------------------------------------- //
 
@@ -402,20 +405,26 @@ void ExecutiveTask(void *pvParameters)
     StateManager(g_executiveData, g_ioData);
 
     // --- sleep logic --- //
-    if (g_executiveData->getSleepModeEnable())
-    {
-      // turn off display and gps module power
-      // digitalWrite(GPS_WAKE_PIN, LOW);
-      // gpsModule.sendCommand(PTMK_BACKUP_MODE); // backup power command, cannot be awkoen via softare
-      g_gpsModule.sendCommand(PTMK_STANDBY_MODE); // can be awoken from software
-      g_batteryModule.sleep(true);
-      g_wpStorage.putBool(NVS_WAS_SLEEPING_KEY, true);
-      g_wpStorage.end();
-      digitalWrite(TFT_I2C_POWER, LOW);
+    // if (g_executiveData->getSleepModeEnable())
+    // {
+    //   // turn off display and gps module power
+    //   // digitalWrite(GPS_WAKE_PIN, LOW);
+    //   // gpsModule.sendCommand(PTMK_BACKUP_MODE); // backup power command, cannot be awkoen via softare
+    //   g_gpsModule.sendCommand(PTMK_STANDBY_MODE); // can be awoken from software
+    //   g_batteryModule->sleep(true);
+    //   g_wpStorage.putBool(NVS_WAS_SLEEPING_KEY, true);
+    //   g_wpStorage.end();
+    //   digitalWrite(TFT_I2C_POWER, LOW);
 
-      esp_deep_sleep_start();
-    }
+    //   esp_deep_sleep_start();
+    // }
     // --- sleep logic --- //
+
+    // debugging
+    if (g_debugger.debugEnabled)
+    {
+      g_debugger.executiveTaskCount++;
+    }
   }
 }
 /**
@@ -686,16 +695,18 @@ void PrintSchedulerDebug()
   std::vector<int> taskRefreshRate;
   int uptime = esp_rtc_get_time_us() / 1000000;
 
+  taskRefreshRate.push_back(g_debugger.executiveTaskCount - g_debugger.executiveTaskPreviousCount);
   taskRefreshRate.push_back(g_debugger.ioTaskCount - g_debugger.ioTaskPreviousCount);
   taskRefreshRate.push_back(g_debugger.gpsTaskCount - g_debugger.gpsTaskPreviousCount);
   taskRefreshRate.push_back(g_debugger.displayTaskCount - g_debugger.displayTaskPreviousCount);
 
   // print
-  Serial.printf("uptime: %d | io: <%d Hz> (%d) | gps: <%d Hz> (%d) | display: <%d Hz> (%d) \n",
-                uptime, taskRefreshRate.at(0), g_debugger.ioTaskCount, taskRefreshRate.at(1), g_debugger.gpsTaskCount,
-                taskRefreshRate.at(2), g_debugger.displayTaskCount);
+  Serial.printf("uptime: %d | executive: <%d Hz> (%d) | io: <%d Hz> (%d) | gps: <%d Hz> (%d) | display: <%d Hz> (%d) \n",
+                uptime, taskRefreshRate.at(0), g_debugger.executiveTaskCount, taskRefreshRate.at(1), g_debugger.ioTaskCount, taskRefreshRate.at(2), g_debugger.gpsTaskCount,
+                taskRefreshRate.at(3), g_debugger.displayTaskCount);
 
   // update counters
+  g_debugger.executiveTaskPreviousCount = g_debugger.executiveTaskCount;
   g_debugger.ioTaskPreviousCount = g_debugger.ioTaskCount;
   g_debugger.gpsTaskPreviousCount = g_debugger.gpsTaskCount;
   g_debugger.displayTaskPreviousCount = g_debugger.displayTaskCount;

@@ -10,6 +10,7 @@ ExecutiveData::ExecutiveData()
       alertStatus_(false),
       displayMode_(GPS_MODE),
       previousDisplayMode_(GPS_MODE),
+      displayDebugEnable_(false),
       waypoints_(),
       selectedWaypoint_(0),
       enableFlashlight_(false)

@@ -32,39 +32,39 @@ unsigned long g_lastGpsTime = 0;
 /**
  *
  */
-void GpsManager(Adafruit_GPS gpsModule, GpsData *gpsData)
+void GpsManager(Adafruit_GPS *gpsModule, GpsData *gpsData)
 {
     // read gps data
-    while (gpsModule.read() != 0)
+    while (gpsModule->read() != 0)
     {
         // process gps data
-        if (gpsModule.newNMEAreceived())
+        if (gpsModule->newNMEAreceived())
         {
-            if (gpsModule.parse(gpsModule.lastNMEA())) // this sets the newNMEAreceived() flag to false
+            if (gpsModule->parse(gpsModule->lastNMEA())) // this sets the newNMEAreceived() flag to false
             {
                 // connection
-                gpsData->setNumSats(gpsModule.satellites);
-                gpsData->setFixQuality(gpsModule.fixquality);
-                if (gpsModule.secondsSinceFix() < DELTA_FIX_HARDSTOP)
+                gpsData->setNumSats(gpsModule->satellites);
+                gpsData->setFixQuality(gpsModule->fixquality);
+                if (gpsModule->secondsSinceFix() < DELTA_FIX_HARDSTOP)
                 {
-                    gpsData->setDtLastFix(gpsModule.secondsSinceFix());
+                    gpsData->setDtLastFix(gpsModule->secondsSinceFix());
                 }
                 else
                 {
                     gpsData->setDtLastFix(-1);
                 }
 
-                gpsData->setDtSinceTime(gpsModule.secondsSinceTime());
-                gpsData->setDtSinceDate(gpsModule.secondsSinceDate());
+                gpsData->setDtSinceTime(gpsModule->secondsSinceTime());
+                gpsData->setDtSinceDate(gpsModule->secondsSinceDate());
 
                 //  location
-                gpsData->setLatitude(gpsModule.latitudeDegrees);
-                gpsData->setLongitude(gpsModule.longitudeDegrees);
-                gpsData->setAltitude(gpsModule.altitude * METERS_TO_FEET);
+                gpsData->setLatitude(gpsModule->latitudeDegrees);
+                gpsData->setLongitude(gpsModule->longitudeDegrees);
+                gpsData->setAltitude(gpsModule->altitude * METERS_TO_FEET);
 
                 // vector
-                gpsData->setSpeed(gpsModule.speed); // speed is given in knots
-                gpsData->setHeading(gpsModule.angle);
+                gpsData->setSpeed(gpsModule->speed); // speed is given in knots
+                gpsData->setHeading(gpsModule->angle);
 
                 // apply velocity deadband
                 if (gpsData->getSpeed() >= MIN_SPEED)
@@ -78,17 +78,17 @@ void GpsManager(Adafruit_GPS gpsModule, GpsData *gpsData)
                 }
 
                 // data
-                gpsData->setYear(gpsModule.year + 2000);
-                gpsData->setMonth(gpsModule.month);
-                gpsData->setDay(gpsModule.day);
+                gpsData->setYear(gpsModule->year + 2000);
+                gpsData->setMonth(gpsModule->month);
+                gpsData->setDay(gpsModule->day);
 
                 // determine if date time information is valid
                 gpsData->setValidDate((gpsData->getYear() >= INIT_OPERATING_YEAR && gpsData->getYear() < EOL_YEAR));
 
                 // time
-                gpsData->setHour(gpsModule.hour);
-                gpsData->setMinute(gpsModule.minute);
-                gpsData->setSecond(gpsModule.seconds);
+                gpsData->setHour(gpsModule->hour);
+                gpsData->setMinute(gpsModule->minute);
+                gpsData->setSecond(gpsModule->seconds);
 
                 // calculate refresh rate
                 g_gpsCounter++;

@@ -132,12 +132,14 @@ typedef struct
     String debugText;
 
     // scheduler data
+    unsigned long executiveTaskCount;
     unsigned long ioTaskCount;
     unsigned long gpsTaskCount;
     unsigned long displayTaskCount;
 
     int displayRefreshRate;
 
+    unsigned long executiveTaskPreviousCount;
     unsigned long ioTaskPreviousCount;
     unsigned long gpsTaskPreviousCount;
     unsigned long displayTaskPreviousCount;

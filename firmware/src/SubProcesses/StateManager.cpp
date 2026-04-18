@@ -26,13 +26,8 @@ void StateManager(ExecutiveData *executiveData, IoData *ioData)
         if (ioData->getReturnShortPress())
         {
             executiveData->setDisplayMode(WAYPOINT_MODE);
-            // g_previousSelectedWaypoint = -1;  // force computation of vector
             executiveData->setDisplayDebugEnabled(false);
-        }
-
-        if (ioData->getReturnLongPress())
-        {
-            executiveData->setDisplayMode(GPS_MODE);
+            ioData->setReturnShortPress(false);
         }
         break;
 
@@ -45,16 +40,13 @@ void StateManager(ExecutiveData *executiveData, IoData *ioData)
             {
                 executiveData->setSelectedWaypoint(0);
             }
+            ioData->setSelectShortPress(false);
         }
 
         if (ioData->getReturnShortPress())
         {
             executiveData->setDisplayMode(SYSTEM_MODE);
-        }
-
-        if (ioData->getReturnLongPress())
-        {
-            executiveData->setDisplayMode(GPS_MODE);
+            ioData->setReturnShortPress(false);
         }
         break;
 
@@ -62,24 +54,20 @@ void StateManager(ExecutiveData *executiveData, IoData *ioData)
         if (ioData->getSelectShortPress())
         {
             executiveData->setDisplayMode(SLEEP_PROMPT_MODE);
-            // g_drewMoonIcon = false;
+            ioData->setSelectShortPress(false);
         }
 
         if (ioData->getOptionShortPress())
         {
             executiveData->setDisplayMode(FLASHLIGHT_MODE);
+            ioData->setOptionShortPress(false);
         }
 
         if (ioData->getReturnShortPress())
         {
             executiveData->setDisplayMode(GPS_MODE);
             executiveData->setSleepModeEnable(false);
-        }
-
-        if (ioData->getReturnLongPress())
-        {
-            executiveData->setDisplayMode(GPS_MODE);
-            executiveData->setSleepModeEnable(false);
+            ioData->setReturnShortPress(false);
         }
         break;
 
@@ -88,11 +76,13 @@ void StateManager(ExecutiveData *executiveData, IoData *ioData)
         {
             executiveData->setDisplayMode(SYSTEM_MODE);
             executiveData->setSleepModeEnable(false);
+            ioData->setReturnShortPress(false);
         }
 
         if (ioData->getOptionShortPress())
         {
             executiveData->setSleepModeEnable(true);
+            ioData->setOptionShortPress(false);
         }
         break;
 
@@ -100,11 +90,13 @@ void StateManager(ExecutiveData *executiveData, IoData *ioData)
         if (ioData->getOptionShortPress())
         {
             executiveData->setFlashlightEnabled(!executiveData->getFlashlightEnabled());
+            ioData->setOptionShortPress(false);
         }
 
         if (ioData->getReturnShortPress())
         {
             executiveData->setDisplayMode(SYSTEM_MODE);
+            ioData->setReturnShortPress(false);
         }
         break;
 
@@ -114,6 +106,7 @@ void StateManager(ExecutiveData *executiveData, IoData *ioData)
         if (ioData->getReturnShortPress())
         {
             executiveData->setDisplayMode(GPS_MODE);
+            ioData->setReturnShortPress(false);
         }
         break;
     }
