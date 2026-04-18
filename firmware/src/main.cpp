@@ -24,7 +24,7 @@
 #include <rtc.h>
 #include <vector>
 
-// hardware specific
+// hardware
 #include <Adafruit_GPS.h>      // gps parsing library
 #include <Adafruit_GFX.h>      // graphics library
 #include <Adafruit_ST7789.h>   // display driver library
@@ -196,9 +196,10 @@ void setup()
 
   Serial.printf("\n\n|--- starting setup ---|\n\n");
   // ------------------------------------------------------------------------- //
+  Serial.printf("version:\n\t%d.%d:%s\n", FIRMWARE_MAJOR, FIRMWARE_BUILD, FIRMWARE_NAME);
 
   // --------------------------- initialize io ------------------------------- //
-  Serial.printf("io:\n");
+  Serial.printf("\nio:\n");
   // power
   pinMode(TFT_I2C_POWER, OUTPUT);
   digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display and gps module
@@ -223,7 +224,7 @@ void setup()
   // ------------------------------------------------------------------------- //
 
   // -------------------- initialize non-volitile storage -------------------- //
-  Serial.printf("nvs:\n");
+  Serial.printf("\nnvs:\n");
   if (g_wpStorage.begin("wp-storage", false)) // true = read only | false = read/write
   {
     Serial.printf("\tnvs init: [ success ]\n");
@@ -243,7 +244,6 @@ void setup()
     tmpLong = g_wpStorage.getFloat(NVS_WP_1_LONG_KEY, -99);
     tmpName = g_wpStorage.getString(NVS_WP_1_NAME_KEY, " ");
     WaypointCoordinatesType wp1 = {tmpLat, tmpLong, tmpName};
-    Serial.printf("wp1: %s\n", wp1.name.c_str());
 
     tmpLat = g_wpStorage.getFloat(NVS_WP_2_LAT_KEY, -99);
     tmpLong = g_wpStorage.getFloat(NVS_WP_2_LONG_KEY, -99);
@@ -279,7 +279,7 @@ void setup()
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize battery --------------------------- //
-  Serial.printf("battery:\n");
+  Serial.printf("\nbattery:\n");
   if (g_batteryModule->begin())
   {
     Serial.printf("\tbattery init [ success ]\n");
@@ -298,7 +298,7 @@ void setup()
   // ------------------------------------------------------------------------- //
 
   // -------------------------- initialize display --------------------------- //
-  Serial.printf("display:\n");
+  Serial.printf("\ndisplay:\n");
   g_displayModule.init(135, 240); // set display size
   g_displayModule.setRotation(3);
   g_displayModule.fillScreen(ST77XX_BLACK); // ensure display is dim when backlight is turned on
@@ -327,7 +327,7 @@ void setup()
   // -------------------------------------------------------------------------- //
 
   // -------------------------- initialize gps -------------------------------- //
-  Serial.printf("gps:\n");
+  Serial.printf("\ngps:\n");
   if (g_gpsModule->begin(GPS_I2C_ADDR))
   {
     g_gpsModule->sendCommand(""); // wake from standby mode by sending a byte

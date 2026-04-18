@@ -11,7 +11,8 @@
 */
 
 #include <Arduino.h>
-#include <Adafruit_GPS.h> // gps parsing library
+#include <Adafruit_GPS.h> // gps library
+
 #include <Data/GpsData.h>
 
 /*
@@ -25,7 +26,7 @@
 #define KNOTS_TO_MPH 1.1507795                   // mulitplier for converting knots to mph
 #define INIT_OPERATING_YEAR 2025                 // first operational year
 #define EOL_YEAR 2079                            // end of life operating year
-#define GPS_REFRESH_RATE_CALCULATE_INTERVAL 1000 // in millisecond
+#define GPS_REFRESH_RATE_CALCULATE_INTERVAL 1000 // in milliseconds
 
 /*
 ===============================================================================================
@@ -79,7 +80,7 @@ void GpsManager(Adafruit_GPS *gpsModule, GpsData *gpsData)
                 gpsData->setSpeed(gpsModule->speed); // speed is given in knots
                 gpsData->setHeading(gpsModule->angle);
 
-                // // apply velocity deadband
+                // apply velocity deadband
                 if (gpsData->getSpeed() >= MIN_SPEED)
                 {
                     gpsData->setSpeed(gpsData->getSpeed() * KNOTS_TO_MPH); // convert to mph

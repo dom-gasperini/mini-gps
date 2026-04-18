@@ -19,7 +19,7 @@
 */
 
 /**
- * @brief setup managment struct
+ * @brief setup managment
  */
 typedef struct
 {

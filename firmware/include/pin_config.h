@@ -3,14 +3,8 @@
  * @author dom gasperini
  * @brief contains the pin definitions for mini gps
  * @version 6
- * @date 2025-09-30
+ * @date 2026-04-17
  */
-
-/*
-===========================================================
-                    includes
-===========================================================
-*/
 
 /*
 ===========================================================
@@ -18,8 +12,8 @@
 ===========================================================
 */
 
-// io
-#define SELECT_BUTTON 0 // top | pulled up
+// buttons
+#define SELECT_BUTTON 0 // top    | pulled up
 #define OPTION_BUTTON 1 // middle | pulled down
 #define RETURN_BUTTON 2 // bottom | pulled down
 

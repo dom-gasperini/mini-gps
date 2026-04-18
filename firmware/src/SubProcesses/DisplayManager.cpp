@@ -29,24 +29,19 @@
 #define REFRESH_WAYPOINT_VECTOR_DELAY 1000 // in milliseconds
 
 // gps
-#define DT_FIX_SOFT_LOST_SIGNAL_TIME_EXPIRED 60.0
-#define DT_FIX_SOFT_LOST_SIGNAL_TIME_START 1.0
-#define DT_FIX_EXPIRED_TIME 600
+#define DT_FIX_SOFT_LOST_SIGNAL_TIME_EXPIRED 60.0 // in seconds
+#define DT_FIX_SOFT_LOST_SIGNAL_TIME_START 1.0    // in seconds
+#define DT_FIX_EXPIRED_TIME 600                   // in seconds
 
 // battery info
-#define HALF_BATTERY_CAPACITY 50.0 // in %
-#define LOW_BATTERY_CAPACITY 20.0  // in %
-#define HIGH_BATTERY_VOLTAGE 3.9   // in volts
-#define LOW_BATTERY_VOLTAGE 3.4    // in volts
+#define HALF_BATTERY_CAPACITY 50.0         // in %
+#define LOW_BATTERY_CAPACITY 20.0          // in %
+#define HIGH_BATTERY_VOLTAGE_THRESHOLD 3.9 // in volts
+#define LOW_BATTERY_VOLTAGE_THRESHOLD 3.7  // in volts
 
 // time keeping
 #define BATTERY_CHARGING_INDICATION_DELAY 500        // in milliseconds
 #define DISPLAY_REFRESH_RATE_CALCULATE_INTERVAL 1000 // in milliseconds
-
-// system data
-#define FIRMWARE_MAJOR 7
-#define FIRMWARE_BUILD 3
-#define FIRMWARE_NAME "convergence"
 
 /*
 ===============================================================================================
@@ -54,15 +49,18 @@
 ===============================================================================================
 */
 
-unsigned long g_lastBatteryChargeIndicatorTime = 0;
+// waypoints
 int g_previousSelectedWaypoint = -1; // init to non-existant index to force first time compute of vector
-unsigned long g_waypointLastComputeTime = 0;
-bool g_validWaypointData = false;
 
-unsigned long g_refreshRateCounter = 0;
+// time keeping
+unsigned long g_lastBatteryChargeIndicatorTime = 0;
+unsigned long g_waypointLastComputeTime = 0;
 unsigned long g_refreshRateLastTime = 0;
 unsigned long g_colorToggleLastTime = 0;
+unsigned long g_refreshRateCounter = 0;
 
+// flags
+bool g_validWaypointData = false;
 bool g_drewMoonIcon = false;
 bool g_updatedFlashlight = false; // a flag that the flashlight has been enabled
 bool g_colorToggleEnable = false; // flag for alternating colors
@@ -111,7 +109,7 @@ void DisplayManager(Adafruit_ST7789 displayModule, ExecutiveData *executiveData,
         displayModule.fillScreen(ST77XX_BLACK);
         executiveData->setPreviousDisplayMode(executiveData->getDisplayMode());
 
-        // extras
+        // flags
         g_drewMoonIcon = false;
         g_validWaypointData = !executiveData->getWaypoints().empty();
     }
@@ -119,7 +117,7 @@ void DisplayManager(Adafruit_ST7789 displayModule, ExecutiveData *executiveData,
     // status bar
     DisplayStatusBar(displayModule, executiveData, gpsData);
 
-    // main information
+    // modes
     switch (executiveData->getDisplayMode())
     {
     case GPS_MODE:
@@ -413,11 +411,11 @@ void DisplaySystem(Adafruit_ST7789 displayModule, ExecutiveData *executiveData)
     displayModule.printf("battery: %.1f%% ", executiveData->getBatteryPercent());
 
     // display battery voltage
-    if (executiveData->getBatteryVoltage() >= HIGH_BATTERY_VOLTAGE)
+    if (executiveData->getBatteryVoltage() >= HIGH_BATTERY_VOLTAGE_THRESHOLD)
     {
         displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
     }
-    else if (executiveData->getBatteryVoltage() > LOW_BATTERY_VOLTAGE)
+    else if (executiveData->getBatteryVoltage() > LOW_BATTERY_VOLTAGE_THRESHOLD)
     {
         displayModule.setTextColor(ST77XX_YELLOW, ST77XX_BLACK);
     }

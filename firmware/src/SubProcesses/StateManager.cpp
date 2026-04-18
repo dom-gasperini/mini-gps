@@ -26,6 +26,7 @@
  */
 void StateManager(ExecutiveData *executiveData, IoData *ioData)
 {
+    // control state based on io input
     switch (executiveData->getDisplayMode())
     {
     case GPS_MODE:
@@ -96,6 +97,12 @@ void StateManager(ExecutiveData *executiveData, IoData *ioData)
         break;
 
     case ERROR_MODE:
+        // select
+        ioData->setSelectShortPress(false);
+
+        // option
+        ioData->setOptionShortPress(false);
+
         // return
         if (ioData->getReturnShortPress())
         {

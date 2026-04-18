@@ -12,6 +12,7 @@
 
 #include <Arduino.h>
 #include <Adafruit_MAX1704X.h> // battery managment chip library
+
 #include <Data/ExecutiveData.h>
 
 /*
