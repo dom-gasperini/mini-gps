@@ -2,7 +2,7 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief mini gps
- * @version 7
+ * @version 7.3
  * @date 2026-04-17
  *
  * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather docs)
@@ -30,7 +30,7 @@
 #include <Adafruit_ST7789.h>   // display driver library
 #include <Adafruit_MAX1704X.h> // battery managment chip library
 
-// custom
+// data
 #include <Data/ExecutiveData.h>
 #include <Data/GpsData.h>
 #include <Data/IoData.h>
@@ -52,10 +52,8 @@
 #define PTMK_STANDBY_MODE "$PMTK161,0*28" // enter standby mode
 #define PTMK_BACKUP_MODE "$PMTK225,4*2F"  // command the module to enter backup power mode and maintain date/time/d-fix via coin cell (consumes 15uA from battery)
 
-// system
-
 // nvs
-#define NVS_FLASH_WITH_DEFAULT false        // write the default values to the nvs (KEEP DISABLED)
+#define NVS_FLASH_WITH_DEFAULT_VALUES false // write the default values to the nvs (KEEP DISABLED)
 #define NVS_WAS_SLEEPING_KEY "was-sleeping" // to determine if boot was a cold start or rise from slumber
 #define NVS_WP_1_LAT_KEY "wp1-lat"
 #define NVS_WP_1_LONG_KEY "wp1-long"
@@ -86,7 +84,7 @@
 #define DEBUG_REFRESH_RATE 1000
 
 // debugging
-#define DEBUG_BOOT_DELAY 1000 // in milliseconds
+#define DEBUG_BOOT_DELAY 3000 // in milliseconds
 #define ENABLE_DEBUGGING true // master debug toggle (does not disable boot output)
 
 /*
@@ -130,7 +128,6 @@ Adafruit_GPS *g_gpsModule = new Adafruit_GPS(&Wire);
 
 // display
 Adafruit_ST7789 g_displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // 240x135
-DisplayModeType g_previousDisplayMode = ERROR_MODE;
 
 // data
 ExecutiveData *g_executiveData = new ExecutiveData();
@@ -165,7 +162,6 @@ void DisplayManager(Adafruit_ST7789 displayModule, ExecutiveData *executiveData,
 
 // helpers
 void BitGraphics(Adafruit_ST7789 displayModule);
-String TaskStateToString(eTaskState state);
 void FlashNVS();
 
 // debug
@@ -201,7 +197,7 @@ void setup()
   Serial.printf("\n\n|--- starting setup ---|\n\n");
   // ------------------------------------------------------------------------- //
 
-  // --------------------------- initialize IO ------------------------------- //
+  // --------------------------- initialize io ------------------------------- //
   Serial.printf("io:\n");
   // power
   pinMode(TFT_I2C_POWER, OUTPUT);
@@ -233,7 +229,7 @@ void setup()
     Serial.printf("\tnvs init: [ success ]\n");
 
     // flash nvs
-    if (NVS_FLASH_WITH_DEFAULT)
+    if (NVS_FLASH_WITH_DEFAULT_VALUES)
     {
       FlashNVS();
       Serial.printf("\tnvs flashed with default data!\n");
@@ -242,6 +238,7 @@ void setup()
     // read nvs
     float tmpLat, tmpLong;
     String tmpName;
+
     tmpLat = g_wpStorage.getFloat(NVS_WP_1_LAT_KEY, -99);
     tmpLong = g_wpStorage.getFloat(NVS_WP_1_LONG_KEY, -99);
     tmpName = g_wpStorage.getString(NVS_WP_1_NAME_KEY, " ");
@@ -271,7 +268,7 @@ void setup()
     g_wasSleeping = g_wpStorage.getBool(NVS_WAS_SLEEPING_KEY, false);
     g_wpStorage.putBool(NVS_WAS_SLEEPING_KEY, false);
 
-    // save to dynamic memory
+    // save to ram
     std::vector<WaypointCoordinatesType> tmpWps = {wp1, wp2, wp3, wp4, wp5};
     g_executiveData->setWaypoints(tmpWps);
   }
@@ -304,7 +301,7 @@ void setup()
   Serial.printf("display:\n");
   g_displayModule.init(135, 240); // set display size
   g_displayModule.setRotation(3);
-  g_displayModule.fillScreen(ST77XX_BLACK); // ensure display remains dim when backlight is turned on
+  g_displayModule.fillScreen(ST77XX_BLACK); // ensure display is dim when backlight is turned on
   digitalWrite(TFT_BACKLITE, HIGH);         // turn on display backlight
 
   // boot screen
@@ -312,12 +309,12 @@ void setup()
   g_displayModule.setTextColor(ST77XX_GREEN, ST77XX_BLACK);
   g_displayModule.setCursor(55, 60);
   g_displayModule.printf("[> booting mini gps <]");
-  delay(1000);
+  delay(750);
 
   // b.i.t.
   if (!g_wasSleeping)
   {
-    Serial.printf("\tstarting b.i.t.\n");
+    Serial.printf("\t./b.i.t.\n");
     BitGraphics(g_displayModule);
   }
   else
@@ -372,7 +369,7 @@ void setup()
     xTaskCreatePinnedToCore(DisplayTask, "display", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay, DISPLAY_CORE);
   }
 
-  if (g_debugger.debugEnabled == true)
+  if (g_debugger.debugEnabled)
   {
     xTaskCreate(DebugTask, "debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
   }
@@ -398,8 +395,7 @@ void ExecutiveTask(void *pvParameters)
 
   for (;;)
   {
-    // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency); // limit task refresh rate
 
     StateManager(g_executiveData, g_ioData);
 
@@ -437,8 +433,7 @@ void IoTask(void *pvParameters)
 
   for (;;)
   {
-    // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency); // limit task refresh rate
 
     ButtonManager(g_ioData);
     BatteryManager(g_batteryModule, g_executiveData);
@@ -463,8 +458,7 @@ void GpsTask(void *pvParameters)
 
   for (;;)
   {
-    // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency); // limit task refresh rate
 
     GpsManager(g_gpsModule, g_gpsData);
 
@@ -488,8 +482,7 @@ void DisplayTask(void *pvParameters)
 
   for (;;)
   {
-    // limit task refresh rate
-    vTaskDelayUntil(&taskLastWakeTick, xFrequency);
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency); // limit task refresh rate
 
     DisplayManager(g_displayModule, g_executiveData, g_gpsData);
 
@@ -507,8 +500,14 @@ void DisplayTask(void *pvParameters)
  */
 void DebugTask(void *pvParameters)
 {
+  // inits
+  const TickType_t xFrequency = pdMS_TO_TICKS(DEBUG_REFRESH_RATE);
+  TickType_t taskLastWakeTick = xTaskGetTickCount();
+
   for (;;)
   {
+    vTaskDelayUntil(&taskLastWakeTick, xFrequency); // limit task refresh rate
+
     // I/O
     if (g_debugger.IO_debugEnabled)
     {
@@ -532,9 +531,6 @@ void DebugTask(void *pvParameters)
     {
       PrintSchedulerDebug();
     }
-
-    // limit refresh rate
-    vTaskDelay(DEBUG_REFRESH_RATE);
   }
 }
 
@@ -557,7 +553,7 @@ void loop()
 */
 
 /**
- * @brief default values to flash the nvs with
+ * @brief flash the nvs with default values
  */
 void FlashNVS()
 {
