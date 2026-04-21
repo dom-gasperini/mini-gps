@@ -1,15 +1,13 @@
 # mini gps
-
 a gps location device
 
 ## details
-
 - 1 meter precision
-- 10Hz gps fix rate
+- 8Hz gps fix rate
+- 12Hz display refresh rate
 - 400 mAh LiPo battery (10 hours screen on | 1.5 year standby)
 - waypoint navigation system
 
 ## hardware
-
 - Adafruit ESP32-S3 Reverse TFT Feather
-- Adafruit GPS Module (PA1010D Chipset)
+- Adafruit GPS Module (PA1010D chipset)
