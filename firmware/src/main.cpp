@@ -34,6 +34,7 @@
 #include <Data/ExecutiveData.h>
 #include <Data/GpsData.h>
 #include <Data/IoData.h>
+#include <Data/Debugger.h>
 
 #include <data_types.h>
 #include <pin_config.h>
@@ -93,29 +94,6 @@
 ===============================================================================================
 */
 
-/**
- * @brief debug data
- */
-DebuggerType g_debugger = {
-    .debugEnabled = ENABLE_DEBUGGING,
-    .gps_debugEnabled = false,
-    .display_debugEnabled = false,
-    .scheduler_debugEnable = true,
-
-    .debugText = "",
-
-    // scheduler data
-    .ioTaskCount = 0,
-    .gpsTaskCount = 0,
-    .displayTaskCount = 0,
-
-    .displayRefreshRate = 0,
-
-    .ioTaskPreviousCount = 0,
-    .gpsTaskPreviousCount = 0,
-    .displayTaskPreviousCount = 0,
-};
-
 // non-voltile storage
 Preferences g_wpStorage;
 bool g_wasSleeping = false;
@@ -133,6 +111,7 @@ Adafruit_ST7789 g_displayModule = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // 2
 ExecutiveData *g_executiveData = new ExecutiveData();
 GpsData *g_gpsData = new GpsData();
 IoData *g_ioData = new IoData();
+DebuggerData *g_debugger = new DebuggerData();
 
 // task handles
 TaskHandle_t xHandleExecutive = NULL;
@@ -189,7 +168,7 @@ void setup()
   // --------------------------- initialize serial  -------------------------- //
   Serial.begin(9600); // serial output over usb-c port
 
-  if (g_debugger.debugEnabled)
+  if (g_debugger->getDebugEnabled())
   {
     delay(DEBUG_BOOT_DELAY);
   }
@@ -369,7 +348,7 @@ void setup()
     xTaskCreatePinnedToCore(DisplayTask, "display", TASK_STACK_SIZE, NULL, 1, &xHandleDisplay, DISPLAY_CORE);
   }
 
-  if (g_debugger.debugEnabled)
+  if (g_debugger->getDebugEnabled())
   {
     xTaskCreate(DebugTask, "debugger", TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, &xHandleDebug);
   }
@@ -415,9 +394,9 @@ void ExecutiveTask(void *pvParameters)
     }
 
     // debugging
-    if (g_debugger.debugEnabled)
+    if (g_debugger->getDebugEnabled())
     {
-      g_debugger.executiveTaskCount++;
+      g_debugger->incrementExecutiveTaskCount();
     }
   }
 }
@@ -439,9 +418,9 @@ void IoTask(void *pvParameters)
     BatteryManager(g_batteryModule, g_executiveData);
 
     // debugging
-    if (g_debugger.debugEnabled)
+    if (g_debugger->getDebugEnabled())
     {
-      g_debugger.ioTaskCount++;
+      g_debugger->setIoTaskCount(g_debugger->getIoTaskCount() + 1);
     }
   }
 }
@@ -463,9 +442,9 @@ void GpsTask(void *pvParameters)
     GpsManager(g_gpsModule, g_gpsData);
 
     // debugging
-    if (g_debugger.debugEnabled)
+    if (g_debugger->getDebugEnabled())
     {
-      g_debugger.gpsTaskCount++;
+      g_debugger->incrementGpsTaskCount();
     }
   }
 }
@@ -487,9 +466,9 @@ void DisplayTask(void *pvParameters)
     DisplayManager(g_displayModule, g_executiveData, g_gpsData);
 
     // debugging
-    if (g_debugger.debugEnabled)
+    if (g_debugger->getDebugEnabled())
     {
-      g_debugger.displayTaskCount++;
+      g_debugger->incrementDisplayTaskCount();
     }
   }
 }
@@ -508,26 +487,26 @@ void DebugTask(void *pvParameters)
   {
     vTaskDelayUntil(&taskLastWakeTick, xFrequency); // limit task refresh rate
 
-    // I/O
-    if (g_debugger.IO_debugEnabled)
+    // io
+    if (g_debugger->getIoDebugEnabled())
     {
       PrintIODebug();
     }
 
-    // i2c
-    if (g_debugger.gps_debugEnabled)
+    // gps
+    if (g_debugger->getGpsDebugEnabled())
     {
       PrintGpsDebug();
     }
 
     // display
-    if (g_debugger.display_debugEnabled)
+    if (g_debugger->getDisplayDebugEnabled())
     {
       PrintDisplayDebug();
     }
 
     // scheduler
-    if (g_debugger.scheduler_debugEnable)
+    if (g_debugger->getSchedulerDebugEnable())
     {
       PrintSchedulerDebug();
     }
@@ -622,19 +601,19 @@ void PrintSchedulerDebug()
   std::vector<int> taskRefreshRate;
   int uptime = esp_rtc_get_time_us() / 1000000;
 
-  taskRefreshRate.push_back(g_debugger.executiveTaskCount - g_debugger.executiveTaskPreviousCount);
-  taskRefreshRate.push_back(g_debugger.ioTaskCount - g_debugger.ioTaskPreviousCount);
-  taskRefreshRate.push_back(g_debugger.gpsTaskCount - g_debugger.gpsTaskPreviousCount);
-  taskRefreshRate.push_back(g_debugger.displayTaskCount - g_debugger.displayTaskPreviousCount);
+  taskRefreshRate.push_back(g_debugger->getExecutiveTaskCount() - g_debugger->getExecutiveTaskPreviousCount());
+  taskRefreshRate.push_back(g_debugger->getIoTaskCount() - g_debugger->getIoTaskPreviousCount());
+  taskRefreshRate.push_back(g_debugger->getGpsTaskCount() - g_debugger->getGpsTaskPreviousCount());
+  taskRefreshRate.push_back(g_debugger->getDisplayTaskCount() - g_debugger->getDisplayTaskPreviousCount());
 
   // print
   Serial.printf("uptime: %d | executive: <%d Hz> (%d) | io: <%d Hz> (%d) | gps: <%d Hz> (%d) | display: <%d Hz> (%d) \n",
-                uptime, taskRefreshRate.at(0), g_debugger.executiveTaskCount, taskRefreshRate.at(1), g_debugger.ioTaskCount, taskRefreshRate.at(2), g_debugger.gpsTaskCount,
-                taskRefreshRate.at(3), g_debugger.displayTaskCount);
+                uptime, taskRefreshRate.at(0), g_debugger->getExecutiveTaskCount(), taskRefreshRate.at(1), g_debugger->getIoTaskCount(), taskRefreshRate.at(2), g_debugger->getGpsTaskCount(),
+                taskRefreshRate.at(3), g_debugger->getDisplayTaskCount());
 
   // update counters
-  g_debugger.executiveTaskPreviousCount = g_debugger.executiveTaskCount;
-  g_debugger.ioTaskPreviousCount = g_debugger.ioTaskCount;
-  g_debugger.gpsTaskPreviousCount = g_debugger.gpsTaskCount;
-  g_debugger.displayTaskPreviousCount = g_debugger.displayTaskCount;
+  g_debugger->setExecutiveTaskPreviousCount(g_debugger->getExecutiveTaskCount());
+  g_debugger->setIoTaskPreviousCount(g_debugger->getIoTaskCount());
+  g_debugger->setGpsTaskPreviousCount(g_debugger->getGpsTaskCount());
+  g_debugger->setDisplayTaskPreviousCount(g_debugger->getDisplayTaskCount());
 }

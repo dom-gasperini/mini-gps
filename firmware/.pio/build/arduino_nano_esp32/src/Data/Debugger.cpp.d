@@ -1,4 +1,5 @@
-.pio/build/arduino_nano_esp32/src/main.cpp.o: src/main.cpp \
+.pio/build/arduino_nano_esp32/src/Data/Debugger.cpp.o: \
+ src/Data/Debugger.cpp include/Data/Debugger.h \
  /home/newt/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
  /home/newt/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp_arduino_version.h \
  /home/newt/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos/FreeRTOS.h \
@@ -179,28 +180,5 @@
  /home/newt/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32/spiram.h \
  /home/newt/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  /home/newt/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
- /home/newt/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
- /home/newt/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
- /home/newt/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
- /home/newt/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32s3/rtc.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/Adafruit_GPS.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/Adafruit_PMTK.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GPS\ Library/src/NMEA_data.h \
- /home/newt/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src/SPI.h \
- /home/newt/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/Adafruit_GFX.h \
- /home/newt/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/gfxfont.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_I2CDevice.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_SPIDevice.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ ST7735\ and\ ST7789\ Library/Adafruit_ST7789.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ ST7735\ and\ ST7789\ Library/Adafruit_ST77xx.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/Adafruit_SPITFT.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/Adafruit_GFX.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ GFX\ Library/Adafruit_SPITFT_Macros.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ MAX1704X/Adafruit_MAX1704X.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_BusIO_Register.h \
- .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_GenericDevice.h \
  include/Data/ExecutiveData.h include/Data/GpsData.h \
- include/Data/IoData.h include/Data/Debugger.h include/data_types.h \
- include/pin_config.h
+ include/Data/IoData.h
