@@ -2,8 +2,8 @@
  * @file main.cpp
  * @author dom gasperini
  * @brief mini gps
- * @version 7.3
- * @date 2026-04-17
+ * @version 7.4
+ * @date 2026-04-20
  *
  * @ref https://learn.adafruit.com/esp32-s3-reverse-tft-feather/overview      (Adafruit ESP32-S3 Reverse TFT Feather docs)
  * @ref https://learn.adafruit.com/adafruit-mini-gps-pa1010d-module/overview  (Adafruit Mini GPS PA1010D Module docs)
@@ -29,6 +29,7 @@
 #include <Adafruit_GFX.h>      // graphics library
 #include <Adafruit_ST7789.h>   // display driver library
 #include <Adafruit_MAX1704X.h> // battery managment chip library
+#include <pin_config.h>        // io pin configuration
 
 // data
 #include <Data/ExecutiveData.h>
@@ -36,20 +37,17 @@
 #include <Data/IoData.h>
 #include <Data/Debugger.h>
 
-#include <data_types.h>
-#include <pin_config.h>
-
 /*
 ===============================================================================================
                                     definitions
 ===============================================================================================
 */
 
-// general
-
-// comms
+// i2c
 #define BATT_MGMT_I2C_ADDR 0x36
 #define GPS_I2C_ADDR 0x10
+
+// gps commands
 #define PTMK_STANDBY_MODE "$PMTK161,0*28" // enter standby mode
 #define PTMK_BACKUP_MODE "$PMTK225,4*2F"  // command the module to enter backup power mode and maintain date/time/d-fix via coin cell (consumes 15uA from battery)
 
@@ -77,16 +75,15 @@
 #define EXECUTIVE_CORE 0
 #define DISPLAY_CORE 1
 
-// task frequencies (in RTOS ticks [1 tick = interrupt at 1 kHz])
+// task frequencies (in RTOS ticks, 1 tick = 1ms)
 #define EXECUTIVE_REFRESH_RATE 2
 #define IO_REFRESH_RATE 2
 #define GPS_REFRESH_RATE 4
-#define DISPLAY_REFRESH_RATE 20
+#define DISPLAY_REFRESH_RATE 82
 #define DEBUG_REFRESH_RATE 1000
 
 // debugging
 #define DEBUG_BOOT_DELAY 3000 // in milliseconds
-#define ENABLE_DEBUGGING true // master debug toggle (does not disable boot output)
 
 /*
 ===============================================================================================
@@ -159,11 +156,13 @@ void PrintSchedulerDebug();
 void setup()
 {
   // init setup manager
-  InitDeviceType setup = {
-      .ioActive = false,
-      .displayActive = false,
-      .gpsActive = false,
+  struct SetupManager
+  {
+    bool ioActive = false;
+    bool displayActive = false;
+    bool gpsActive = false;
   };
+  SetupManager setup;
 
   // --------------------------- initialize serial  -------------------------- //
   Serial.begin(9600); // serial output over usb-c port

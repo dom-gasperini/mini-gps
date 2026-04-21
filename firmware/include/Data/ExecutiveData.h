@@ -25,7 +25,7 @@
 
 // system data
 #define FIRMWARE_MAJOR 7
-#define FIRMWARE_BUILD 3
+#define FIRMWARE_BUILD 4
 #define FIRMWARE_NAME "cartographer"
 
 /*

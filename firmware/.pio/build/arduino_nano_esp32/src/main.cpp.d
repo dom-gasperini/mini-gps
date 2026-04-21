@@ -201,6 +201,5 @@
  .pio/libdeps/arduino_nano_esp32/Adafruit\ MAX1704X/Adafruit_MAX1704X.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_BusIO_Register.h \
  .pio/libdeps/arduino_nano_esp32/Adafruit\ BusIO/Adafruit_GenericDevice.h \
- include/Data/ExecutiveData.h include/Data/GpsData.h \
- include/Data/IoData.h include/Data/Debugger.h include/data_types.h \
- include/pin_config.h
+ include/pin_config.h include/Data/ExecutiveData.h include/Data/GpsData.h \
+ include/Data/IoData.h include/Data/Debugger.h
