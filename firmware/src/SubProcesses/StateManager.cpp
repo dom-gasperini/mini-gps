@@ -1,7 +1,7 @@
 /**
- * @file data_types.h
+ * @file StateManager.cpp
  * @brief
- * @date 2026-04-17
+ * @date 2026-04-20
  */
 
 /*
@@ -26,8 +26,7 @@
  */
 void StateManager(ExecutiveData *executiveData, IoData *ioData)
 {
-    // control state based on io input
-    switch (executiveData->getDisplayMode())
+    switch (executiveData->getDisplayMode()) // control state based on io input
     {
     case GPS_MODE:
         // select

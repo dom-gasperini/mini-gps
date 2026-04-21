@@ -130,6 +130,7 @@ void GpsTask(void *pvParameters);
 void DisplayTask(void *pvParameters);
 void DebugTask(void *pvParameters);
 
+// sub-processes
 void StateManager(ExecutiveData *executiveData, IoData *ioData);
 void ButtonManager(IoData *ioData);
 void BatteryManager(Adafruit_MAX17048 *batteryModule, ExecutiveData *executiveData);
@@ -173,11 +174,12 @@ void setup()
   }
 
   Serial.printf("\n\n|--- starting setup ---|\n\n");
-  // ------------------------------------------------------------------------- //
   Serial.printf("version:\n\t%d.%d:%s\n", FIRMWARE_MAJOR, FIRMWARE_BUILD, FIRMWARE_NAME);
+  // ------------------------------------------------------------------------- //
 
   // --------------------------- initialize io ------------------------------- //
   Serial.printf("\nio:\n");
+
   // power
   pinMode(TFT_I2C_POWER, OUTPUT);
   digitalWrite(TFT_I2C_POWER, HIGH); // turn on power to the display and gps module
@@ -203,6 +205,7 @@ void setup()
 
   // -------------------- initialize non-volitile storage -------------------- //
   Serial.printf("\nnvs:\n");
+
   if (g_wpStorage.begin("wp-storage", false)) // true = read only | false = read/write
   {
     Serial.printf("\tnvs init: [ success ]\n");
@@ -258,6 +261,7 @@ void setup()
 
   // -------------------------- initialize battery --------------------------- //
   Serial.printf("\nbattery:\n");
+
   if (g_batteryModule->begin())
   {
     Serial.printf("\tbattery init [ success ]\n");
@@ -277,6 +281,7 @@ void setup()
 
   // -------------------------- initialize display --------------------------- //
   Serial.printf("\ndisplay:\n");
+
   g_displayModule.init(135, 240); // set display size
   g_displayModule.setRotation(3);
   g_displayModule.fillScreen(ST77XX_BLACK); // ensure display is dim when backlight is turned on
@@ -306,6 +311,7 @@ void setup()
 
   // -------------------------- initialize gps -------------------------------- //
   Serial.printf("\ngps:\n");
+
   if (g_gpsModule->begin(GPS_I2C_ADDR))
   {
     g_gpsModule->sendCommand(""); // wake from standby mode by sending a byte
@@ -399,6 +405,7 @@ void ExecutiveTask(void *pvParameters)
     }
   }
 }
+
 /**
  * @brief reads and writes i/o
  * @param pvParameters parameters passed to task
@@ -520,7 +527,6 @@ void DebugTask(void *pvParameters)
 
 void loop()
 {
-  // everything is managed by rtos, so nothing happens here!
   vTaskDelay(1); // prevent watchdog from getting upset
 }
 
@@ -565,16 +571,16 @@ void FlashNVS()
 */
 
 /**
- * @brief i/o debugging
+ * @brief io debugging
  */
 void PrintIODebug()
 {
-  Serial.printf("\n--- start i/o debug ---\n");
-  Serial.printf("\n--- end i/o debug ---\n");
+  Serial.printf("\n--- start io debug ---\n");
+  Serial.printf("\n--- end io debug ---\n");
 }
 
 /**
- * @brief ic2 debugging
+ * @brief gps debugging
  */
 void PrintGpsDebug()
 {

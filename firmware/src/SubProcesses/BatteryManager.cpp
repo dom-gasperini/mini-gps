@@ -21,7 +21,7 @@
 ===============================================================================================
 */
 
-#define BATTERY_POLL_INTERVAL 2000 // in milliseconds
+#define BATTERY_POLL_INTERVAL 2500 // in milliseconds
 #define LOW_BATTERY_THRESHOLD 10   // in %
 
 /*
@@ -61,13 +61,10 @@ void BatteryManager(Adafruit_MAX17048 *batteryModule, ExecutiveData *executiveDa
         executiveData->setBatteryVoltage(batteryModule->cellVoltage());
         executiveData->setBatteryChargeRate(batteryModule->chargeRate());
 
-        // --- low battery logic --- //
+        // low battery logic
         if (executiveData->getBatteryPercent() <= LOW_BATTERY_THRESHOLD)
         {
             executiveData->setLowBatteryModeEnable(true);
         }
-        // --- low battery logic --- //
-
-        processBatteryData = false;
     }
 }
